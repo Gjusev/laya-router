@@ -17,10 +17,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PriceConfig(BaseModel):
-    """List prices in USD per 1M tokens (used only for cost estimation)."""
+    """List prices in USD per 1M tokens (used only for cost estimation).
 
-    input_per_m: float = Field(gt=0)
-    output_per_m: float = Field(gt=0)
+    Zero is valid: free-tier models (e.g. glm-4.5-flash) price at 0.
+    """
+
+    input_per_m: float = Field(ge=0)
+    output_per_m: float = Field(ge=0)
 
 
 class TierConfig(BaseModel):

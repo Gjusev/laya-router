@@ -1,0 +1,13 @@
+# Tier configuration for running the backtest on Z.ai (GLM).
+# glm-4.5-flash is free; glm-4.5 list prices are USD per 1M tokens.
+# Usage: make backtest-glm   (needs OPENAI_API_KEY set to a Z.ai key)
+cheap:
+  model: glm-4.5-flash
+  price:
+    input_per_m: 0.0
+    output_per_m: 0.0
+frontier:
+  model: glm-4.5
+  price:
+    input_per_m: 0.60
+    output_per_m: 2.20

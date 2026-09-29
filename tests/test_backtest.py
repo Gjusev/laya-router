@@ -17,6 +17,7 @@ sys.path.insert(0, str(BACKTEST_DIR))
 import analyze  # noqa: E402
 import build_dataset  # noqa: E402
 import judge  # noqa: E402
+from run_backtest import build_tiers  # noqa: E402
 
 
 class TestSyntheticDataset:
@@ -180,3 +181,26 @@ class TestAnalyze:
         monkeypatch.chdir(Path(__file__).resolve().parent.parent)
         table = analyze.analyze([], [])
         assert "TODO(measure)" in table
+
+
+class TestTiersSelection:
+    def test_explicit_path_wins(self, tmp_path):
+        custom = tmp_path / "tiers.yaml"
+        custom.write_text(
+            "cheap:\n  model: glm-4.5-flash\n  price: {input_per_m: 0, output_per_m: 0}\n"
+            "frontier:\n  model: glm-4.5\n  price: {input_per_m: 0.60, output_per_m: 2.20}\n"
+        )
+        assert build_tiers(custom).frontier.model == "glm-4.5"
+
+    def test_env_var_used_when_no_path(self, tmp_path, monkeypatch):
+        custom = tmp_path / "tiers.yaml"
+        custom.write_text(
+            "cheap:\n  model: glm-4.5-flash\n  price: {input_per_m: 0, output_per_m: 0}\n"
+            "frontier:\n  model: glm-4.5\n  price: {input_per_m: 0.60, output_per_m: 2.20}\n"
+        )
+        monkeypatch.setenv("LAYA_ROUTER_TIERS_FILE", str(custom))
+        assert build_tiers(None).cheap.model == "glm-4.5-flash"
+
+    def test_packaged_default_when_nothing_set(self, monkeypatch):
+        monkeypatch.delenv("LAYA_ROUTER_TIERS_FILE", raising=False)
+        assert build_tiers(None).cheap.model == "gpt-4o-mini"

@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from openai import OpenAI
 
-from laya_router.config import load_tiers
+from run_backtest import build_tiers
 
 RUBRIC = """You are an impartial judge evaluating two answers to the same question.
 
@@ -89,11 +89,11 @@ def judge_pair(client: OpenAI, judge_model: str, record: dict, rng: random.Rando
     }
 
 
-def run(results_path: Path, out_path: Path, limit: int | None, seed: int) -> None:
+def run(results_path: Path, out_path: Path, limit: int | None, seed: int, tiers_path: Path | None) -> None:
     records = [json.loads(line) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if limit:
         records = records[:limit]
-    judge_model = load_tiers().frontier.model
+    judge_model = build_tiers(tiers_path).frontier.model
     client = OpenAI()
     rng = random.Random(seed)
 
@@ -110,10 +110,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, default=Path("backtest/results.jsonl"))
     parser.add_argument("--out", type=Path, default=Path("backtest/judgements.jsonl"))
+    parser.add_argument("--tiers", type=Path, default=None, help="tiers.yaml override (default: LAYA_ROUTER_TIERS_FILE or packaged)")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--seed", type=int, default=13)
     args = parser.parse_args()
-    run(args.results, args.out, args.limit, args.seed)
+    run(args.results, args.out, args.limit, args.seed, args.tiers)
 
 
 if __name__ == "__main__":

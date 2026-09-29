@@ -172,6 +172,15 @@ export OPENAI_API_KEY=sk-...        # budget: ~5-10 USD for 300 prompts x 2 tier
 make backtest                       # dataset -> both-tier answers -> blind judge -> table
 ```
 
+Cheaper: run the same pipeline on **Z.ai (GLM)**, where the cheap tier (`glm-4.5-flash`) is free — the run only pays for frontier answers and judge calls:
+
+```bash
+export OPENAI_API_KEY=<your-z.ai-key>
+make backtest-glm                   # same eval, tiers from backtest/tiers.glm.yaml
+```
+
+Any other OpenAI-compatible upstream works the same way: point `OPENAI_BASE_URL` at it and pass a matching `--tiers` file (or set `LAYA_ROUTER_TIERS_FILE`).
+
 The `min_confidence` threshold should be calibrated on the resulting cost/quality curve — the same idea as calibrating a router threshold on your own traffic.
 
 Results (TODO(measure): publish after the first full run):
