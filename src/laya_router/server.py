@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from laya_router.config import Settings, load_tiers
 from laya_router.routing import LayaRoutingEngine, RoutingEngine
@@ -56,17 +56,6 @@ def create_app(
                 content={"error": {"message": "request body must be a JSON object", "type": "invalid_request_error"}},
             )
 
-        if body.get("stream"):
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "message": "Streaming is not supported yet (on the roadmap); retry with stream=false.",
-                        "type": "invalid_request_error",
-                    }
-                },
-            )
-
         decision = await run_in_threadpool(engine.decide, prompt_text(body.get("messages", [])))
         model = tiers.model_for(decision.tier)
         body["model"] = model
@@ -78,6 +67,37 @@ def create_app(
                 else request.headers.get("authorization", "")
             )
         }
+
+        if body.get("stream"):
+            upstream_request = upstream.build_request(
+                "POST", "/chat/completions", json=body, headers=headers
+            )
+            try:
+                upstream_response = await upstream.send(upstream_request, stream=True)
+            except httpx.HTTPError as exc:
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": {"message": f"upstream request failed: {exc}", "type": "api_error"}},
+                    headers=_laya_headers(decision, model),
+                )
+            # Errors arrive before any SSE byte is sent, so they can still be
+            # passed through as a regular response with routing headers.
+            if upstream_response.status_code >= 400:
+                content = await upstream_response.aread()
+                await upstream_response.aclose()
+                return Response(
+                    status_code=upstream_response.status_code,
+                    content=content,
+                    media_type=upstream_response.headers.get("content-type"),
+                    headers=_laya_headers(decision, model),
+                )
+            return StreamingResponse(
+                _relay(upstream_response),
+                status_code=upstream_response.status_code,
+                media_type=upstream_response.headers.get("content-type"),
+                headers=_laya_headers(decision, model),
+            )
+
         try:
             upstream_response = await upstream.post("/chat/completions", json=body, headers=headers)
         except httpx.HTTPError as exc:
@@ -97,6 +117,19 @@ def create_app(
         )
 
     return app
+
+
+async def _relay(upstream_response: httpx.Response):
+    """Yield upstream SSE bytes as they arrive; always close the stream.
+
+    If the client disconnects mid-stream, starlette cancels this generator and
+    the finally block releases the upstream connection (no leaks).
+    """
+    try:
+        async for chunk in upstream_response.aiter_bytes():
+            yield chunk
+    finally:
+        await upstream_response.aclose()
 
 
 def _laya_headers(decision, model: str) -> Dict[str, str]:

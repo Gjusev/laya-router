@@ -169,8 +169,76 @@ def test_confidence_and_reason_headers_present(fake_engine):
     assert response.headers["X-Laya-Reason"] == "complexity=simple"
 
 
-def test_streaming_request_is_rejected_with_clear_error(fake_engine):
-    # No upstream mock needed: the request is rejected before any forwarding.
+async def sse_stream():
+    """Upstream SSE body as an async generator (keeps chunk boundaries)."""
+    for chunk in (
+        b'data: {"id":"c1","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+        b'data: {"id":"c1","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"hel"},"finish_reason":null}]}\n\n',
+        b"data: [DONE]\n\n",
+    ):
+        yield chunk
+
+
+def sse_upstream_response() -> httpx.Response:
+    return httpx.Response(
+        200, headers={"content-type": "text/event-stream"}, content=sse_stream()
+    )
+
+
+@mock_upstream
+def test_streaming_request_relays_sse_chunks(fake_engine):
+    route = mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(
+        return_value=sse_upstream_response()
+    )
+    client = make_client(fake_engine)
+
+    with client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={"model": "m", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["X-Laya-Route"] == "cheap"
+        chunks = list(response.iter_bytes())
+
+    # The proxy relays bytes as they arrive; the test transport may coalesce
+    # chunks, so assert the byte stream is complete and in order.
+    assert b"".join(chunks) == (
+        b'data: {"id":"c1","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c1","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"hel"},"finish_reason":null}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["stream"] is True
+    assert sent["model"] == "gpt-4o-mini"
+
+
+@mock_upstream
+def test_streaming_complex_prompt_uses_frontier(fake_engine):
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(
+        return_value=sse_upstream_response()
+    )
+    client = make_client(fake_engine)
+
+    with client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "m",
+            "stream": True,
+            "messages": [{"role": "user", "content": "COMPLEXPLEASE hard math"}],
+        },
+    ) as response:
+        assert response.headers["X-Laya-Route"] == "frontier"
+        assert response.status_code == 200
+
+
+@mock_upstream
+def test_streaming_upstream_error_before_stream_passes_through(fake_engine):
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(
+        return_value=httpx.Response(500, json={"error": {"message": "upstream blew up"}})
+    )
     client = make_client(fake_engine)
 
     response = client.post(
@@ -178,8 +246,25 @@ def test_streaming_request_is_rejected_with_clear_error(fake_engine):
         json={"model": "m", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
     )
 
-    assert response.status_code == 400
-    assert "streaming" in response.json()["error"]["message"].lower()
+    assert response.status_code == 500
+    assert response.json()["error"]["message"] == "upstream blew up"
+    assert response.headers["X-Laya-Route"] == "cheap"
+
+
+@mock_upstream
+def test_streaming_unreachable_upstream_returns_502(fake_engine):
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    client = make_client(fake_engine)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "m", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert response.status_code == 502
+    assert response.headers["X-Laya-Route"] == "cheap"
 
 
 @mock_upstream

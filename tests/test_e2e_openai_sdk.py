@@ -93,3 +93,37 @@ def test_sdk_complex_prompt_escalates_to_frontier(proxy_base_url):
 
     # The upstream echoes the model it received, so this proves the routing.
     assert completion.model == "gpt-4o"
+
+
+@mock_upstream
+def test_sdk_streaming_receives_sse_chunks(proxy_base_url):
+    async def sse_bytes():
+        for text in ("Hel", "lo ", "world"):
+            chunk = {
+                "id": "chatcmpl-e2e",
+                "object": "chat.completion.chunk",
+                "model": "gpt-4o-mini",
+                "choices": [
+                    {"index": 0, "delta": {"content": text}, "finish_reason": None}
+                ],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n".encode()
+        yield b"data: [DONE]\n\n"
+
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(
+        return_value=httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=sse_bytes()
+        )
+    )
+    client = openai.OpenAI(base_url=proxy_base_url, api_key="test-key")
+
+    stream = client.chat.completions.create(
+        model="whatever",
+        stream=True,
+        messages=[{"role": "user", "content": "Say hello"}],
+    )
+    received = "".join(
+        part.choices[0].delta.content or "" for part in stream if part.choices
+    )
+
+    assert received == "Hello world"
