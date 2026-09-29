@@ -52,13 +52,38 @@ docker build -t laya-router .
 docker run -p 8000:8000 -e LAYA_ROUTER_UPSTREAM_API_KEY=sk-... laya-router
 ```
 
+## Backtest (reproducible)
+
+The honest eval answers every prompt with **both** tiers, so routing mistakes are measurable, then a blind judge (fixed rubric, temperature 0, seeded A/B shuffle) compares the cheap answer against the frontier one. Definitions are published with the numbers: the router is *correct* when it routed cheap and the judge says win/tie, a *miss* when cheap loses, and *over-escalation* when it spent frontier money on a simple prompt.
+
+```bash
+export OPENAI_API_KEY=sk-...        # budget: ~5-10 USD for 300 prompts x 2 tiers
+make backtest                       # dataset -> both-tier answers -> blind judge -> table
+```
+
+Results (TODO(measure): publish after the first full run):
+
+| Metric | Value |
+|---|---|
+| Prompts (both tiers answered) | — |
+| % routed to cheap | — |
+| Cost saving vs always-frontier | — |
+| Win/tie/lose of cheap vs frontier (judged) | — |
+| Win-rate delta (router vs always-frontier) | — |
+| Routing precision (cheap verdict win/tie) | — |
+| Over-escalations (frontier, costly only) | — |
+| Routing cost per 1,000 requests | $0 (local laya) |
+
+Honest limits of the method: the judge is a single model with a fixed rubric (agreement with a second judge is not yet measured — TODO(measure)); the LMSYS sample is seeded but small; and the laya checkpoint reports uncalibrated confidence for some question types (a runtime warning surfaces this).
+
 ## Roadmap
 
 - [x] MVP: `POST /v1/chat/completions` (non-streaming) with laya-based tier routing
 - [x] Streaming (SSE) passthrough
 - [x] Confidence gating: low `answer_confidence` escalates to the frontier tier; deterministic fast paths for trivial prompts
 - [x] Observability: Prometheus `/metrics`, decision log (JSONL)
-- [ ] Reproducible backtest: cost/quality table over a public prompt set, published in the README
+- [x] Reproducible backtest harness: cost/quality table over a public prompt set (`make backtest`)
+- [ ] Published backtest numbers in the README (needs an API budget; the table above fills in after the first full run)
 
 ## Development setup
 
