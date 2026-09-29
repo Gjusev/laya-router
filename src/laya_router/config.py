@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Escalate to frontier when laya's answer_confidence falls below this.
     # 0 disables the gate. TODO(tune via backtest cost/quality curve).
     min_confidence: float = 0.55
+    # JSONL decision log destination; None disables logging.
+    decision_log: Optional[Path] = None
+    # Per-client-IP request limit per minute; 0 disables the limit.
+    rate_limit_rpm: int = 0
 
 
 def default_tiers_file() -> Path:

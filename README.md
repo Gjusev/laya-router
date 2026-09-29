@@ -32,16 +32,32 @@ completion = client.chat.completions.create(
 )
 ```
 
-Every response carries `X-Laya-Route` (`cheap`/`frontier`), `X-Laya-Model`, `X-Laya-Confidence` and `X-Laya-Reason` headers recording the routing decision.
+Every response carries `X-Laya-Route` (`cheap`/`frontier`), `X-Laya-Model`, `X-Laya-Confidence` and `X-Laya-Reason` headers recording the routing decision. Streaming (`stream: true`) is relayed as SSE with the same headers.
 
-Tier models and list prices are configured in [`src/laya_router/tiers.yaml`](src/laya_router/tiers.yaml); the upstream (any OpenAI-compatible API) and other knobs are configured via `LAYA_ROUTER_*` environment variables (`LAYA_ROUTER_UPSTREAM_BASE_URL`, `LAYA_ROUTER_UPSTREAM_API_KEY`, `LAYA_ROUTER_TIERS_FILE`, `LAYA_ROUTER_UPSTREAM_TIMEOUT_S`).
+Trivial prompts (greetings and the like) take a deterministic fast path to the cheap tier without invoking the model at all; when the decision model is unsure (`answer_confidence` below `LAYA_ROUTER_MIN_CONFIDENCE`) the request escalates to the frontier tier.
+
+## Operations
+
+- `GET /healthz` — liveness probe
+- `GET /metrics` — Prometheus counters and histograms (`laya_router_requests_total{tier,status}`, `laya_router_routing_seconds`)
+- JSONL decision log — set `LAYA_ROUTER_DECISION_LOG=/path/decisions.jsonl` to record one line per routed request
+- Rate limit — set `LAYA_ROUTER_RATE_LIMIT_RPM=<n>` (0 = disabled) for a per-client-IP fixed window
+
+Tier models and list prices are configured in [`src/laya_router/tiers.yaml`](src/laya_router/tiers.yaml); the upstream (any OpenAI-compatible API) and other knobs are configured via `LAYA_ROUTER_*` environment variables (`LAYA_ROUTER_UPSTREAM_BASE_URL`, `LAYA_ROUTER_UPSTREAM_API_KEY`, `LAYA_ROUTER_TIERS_FILE`, `LAYA_ROUTER_UPSTREAM_TIMEOUT_S`, `LAYA_ROUTER_MIN_CONFIDENCE`, `LAYA_ROUTER_DECISION_LOG`, `LAYA_ROUTER_RATE_LIMIT_RPM`).
+
+Docker:
+
+```bash
+docker build -t laya-router .
+docker run -p 8000:8000 -e LAYA_ROUTER_UPSTREAM_API_KEY=sk-... laya-router
+```
 
 ## Roadmap
 
 - [x] MVP: `POST /v1/chat/completions` (non-streaming) with laya-based tier routing
-- [ ] Streaming (SSE) passthrough
-- [ ] Confidence gating: low `answer_confidence` escalates to the frontier tier; deterministic fast paths for trivial prompts
-- [ ] Observability: Prometheus `/metrics`, decision log (JSONL)
+- [x] Streaming (SSE) passthrough
+- [x] Confidence gating: low `answer_confidence` escalates to the frontier tier; deterministic fast paths for trivial prompts
+- [x] Observability: Prometheus `/metrics`, decision log (JSONL)
 - [ ] Reproducible backtest: cost/quality table over a public prompt set, published in the README
 
 ## Development setup
