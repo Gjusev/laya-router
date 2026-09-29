@@ -10,10 +10,25 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 keywords = ["llm-routing", "cost-optimization", "openai-api", "proxy", "laya", "system-one"]
-dependencies = ["laya>=0.3"]
+dependencies = [
+    "laya>=0.3",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "respx>=0.21",
+    "openai>=1.30",
+]
+
+[project.scripts]
+laya-router = "laya_router.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/laya_router"]
@@ -21,3 +36,8 @@ packages = ["src/laya_router"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "slow: tests that download real laya checkpoints or call real upstreams (opt-in)",
+]
+# Skip @slow tests by default; run them explicitly with `pytest -m slow`.
+addopts = "-m 'not slow'"

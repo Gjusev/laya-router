@@ -1,0 +1,14 @@
+# Tier configuration for laya-router.
+# `model` is what gets sent to the upstream OpenAI-compatible API.
+# Prices are upstream list prices in USD per 1M tokens, used only for
+# cost estimation; edit them to match the pricing of your upstream.
+cheap:
+  model: gpt-4o-mini
+  price:
+    input_per_m: 0.15
+    output_per_m: 0.60
+frontier:
+  model: gpt-4o
+  price:
+    input_per_m: 2.50
+    output_per_m: 10.00
