@@ -409,3 +409,62 @@ def test_multimodal_content_routes_on_text_parts_only(fake_engine):
 
     assert response.status_code == 200
     assert fake_engine.prompts == ["What is in this image?"]
+
+
+class TestRelayCleanup:
+    def test_relay_closes_upstream_on_client_disconnect(self):
+        import asyncio
+
+        from laya_router.server import _relay
+
+        class FakeUpstreamResponse:
+            def __init__(self):
+                self.closed = False
+
+            async def aiter_bytes(self):
+                yield b"data: one\n\n"
+                yield b"data: [DONE]\n\n"
+
+            async def aclose(self):
+                self.closed = True
+
+        async def scenario():
+            upstream_response = FakeUpstreamResponse()
+            relay = _relay(upstream_response)
+            first = await relay.__anext__()
+            # Client disconnects mid-stream: starlette closes the generator.
+            try:
+                await relay.athrow(GeneratorExit)
+            except (GeneratorExit, StopAsyncIteration):
+                pass
+            return first, upstream_response.closed
+
+        first, closed = asyncio.run(scenario())
+        assert first == b"data: one\n\n"
+        assert closed is True
+
+    def test_relay_closes_upstream_after_normal_completion(self):
+        import asyncio
+
+        from laya_router.server import _relay
+
+        class FakeUpstreamResponse:
+            def __init__(self):
+                self.closed = False
+
+            async def aiter_bytes(self):
+                yield b"a"
+                yield b"b"
+
+            async def aclose(self):
+                self.closed = True
+
+        async def scenario():
+            upstream_response = FakeUpstreamResponse()
+            relay = _relay(upstream_response)
+            chunks = [c async for c in relay]
+            return chunks, upstream_response.closed
+
+        chunks, closed = asyncio.run(scenario())
+        assert chunks == [b"a", b"b"]
+        assert closed is True

@@ -8,9 +8,11 @@ X-Laya-* response headers.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from typing import Any, Dict, Optional
 
+import anyio
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
@@ -116,6 +118,7 @@ def create_app(
         client_ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
         if not rate_limiter.allow(client_ip, now):
+            REQUESTS_TOTAL.labels(tier="none", status="429").inc()
             return JSONResponse(
                 status_code=429,
                 content={
@@ -130,11 +133,13 @@ def create_app(
         try:
             body = await request.json()
         except json.JSONDecodeError:
+            REQUESTS_TOTAL.labels(tier="none", status="400").inc()
             return JSONResponse(
                 status_code=400,
                 content={"error": {"message": "request body is not valid JSON", "type": "invalid_request_error"}},
             )
         if not isinstance(body, dict):
+            REQUESTS_TOTAL.labels(tier="none", status="400").inc()
             return JSONResponse(
                 status_code=400,
                 content={"error": {"message": "request body must be a JSON object", "type": "invalid_request_error"}},
@@ -142,9 +147,22 @@ def create_app(
 
         prompt = prompt_text(body.get("messages", []))
         started = time.perf_counter()
-        decision = await run_in_threadpool(
-            route_request, engine, prompt, settings.min_confidence
-        )
+        try:
+            decision = await run_in_threadpool(
+                route_request, engine, prompt, settings.min_confidence
+            )
+        except Exception as exc:  # the local router failing must be observable, not a bare 500
+            REQUESTS_TOTAL.labels(tier="error", status="503").inc()
+            if decision_log is not None:
+                decision_log.write(log_entry(
+                    tier="error", model="-", complexity="error", answer_confidence=0.0,
+                    reason=f"engine-error:{exc}", status=503,
+                    routing_seconds=time.perf_counter() - started, prompt=prompt,
+                ))
+            return JSONResponse(
+                status_code=503,
+                content={"error": {"message": f"routing engine failed: {exc}", "type": "api_error"}},
+            )
         routing_seconds = time.perf_counter() - started
         ROUTING_SECONDS.observe(routing_seconds)
         model = tiers.model_for(decision.tier)
@@ -161,18 +179,22 @@ def create_app(
         def finish(response: Response, status: int) -> Response:
             REQUESTS_TOTAL.labels(tier=decision.tier, status=str(status)).inc()
             if decision_log is not None:
-                decision_log.write(
-                    log_entry(
-                        tier=decision.tier,
-                        model=model,
-                        complexity=decision.complexity,
-                        answer_confidence=decision.answer_confidence,
-                        reason=decision.reason,
-                        status=status,
-                        routing_seconds=routing_seconds,
-                        prompt=prompt,
+                try:
+                    decision_log.write(
+                        log_entry(
+                            tier=decision.tier,
+                            model=model,
+                            complexity=decision.complexity,
+                            answer_confidence=decision.answer_confidence,
+                            reason=decision.reason,
+                            status=status,
+                            routing_seconds=routing_seconds,
+                            prompt=prompt,
+                        )
                     )
-                )
+                except OSError as exc:
+                    # Observability must never break serving.
+                    print(f"laya-router: decision log write failed: {exc}", file=sys.stderr)
             return response
 
         if body.get("stream"):
@@ -244,14 +266,17 @@ def create_app(
 async def _relay(upstream_response: httpx.Response):
     """Yield upstream SSE bytes as they arrive; always close the stream.
 
-    If the client disconnects mid-stream, starlette cancels this generator and
-    the finally block releases the upstream connection (no leaks).
+    If the client disconnects mid-stream, starlette cancels this generator.
+    The shielded close keeps the upstream connection from leaking when the
+    surrounding task is already cancelled (a bare await could itself be
+    cancelled before releasing the connection).
     """
     try:
         async for chunk in upstream_response.aiter_bytes():
             yield chunk
     finally:
-        await upstream_response.aclose()
+        with anyio.CancelScope(shield=True):
+            await upstream_response.aclose()
 
 
 def _laya_headers(decision, model: str) -> Dict[str, str]:

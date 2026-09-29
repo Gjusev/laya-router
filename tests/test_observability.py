@@ -108,6 +108,13 @@ class TestRateLimit:
 
 
 class TestSustainedLoad:
+    """The plan's criterion: 100 requests in a row without failures.
+
+    This pins sustained correctness (all succeed, every stream completes);
+    per-stream connection hygiene is pinned separately by the _relay
+    cleanup unit tests in test_server.py.
+    """
+
     def test_100_sequential_mixed_requests_all_succeed(self, fake_engine, respx_mock):
         client = make_client(fake_engine, respx_mock)
         statuses = []
@@ -127,3 +134,44 @@ class TestSustainedLoad:
                 statuses.append(post(client, content=f"please summarize text {i}").status_code)
 
         assert statuses == [200] * 100
+
+
+class TestDegradedPaths:
+    def test_routing_engine_failure_returns_503_and_is_counted(self, fake_engine, respx_mock):
+        def boom(prompt):
+            raise RuntimeError("laya exploded")
+
+        fake_engine.decide = boom
+        client = make_client(fake_engine, respx_mock)
+
+        response = post(client)
+
+        assert response.status_code == 503
+        assert "routing" in response.json()["error"]["message"].lower()
+        assert 'status="503"' in client.get("/metrics").text
+
+    def test_decision_log_failure_never_breaks_responses(self, fake_engine, respx_mock, tmp_path, monkeypatch):
+        from laya_router.observability import DecisionLog
+
+        def broken_write(self, entry):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(DecisionLog, "write", broken_write)
+        client = make_client(fake_engine, respx_mock, decision_log=tmp_path / "d.jsonl")
+
+        assert post(client).status_code == 200
+
+    def test_rate_limited_requests_are_counted(self, fake_engine, respx_mock):
+        client = make_client(fake_engine, respx_mock, rate_limit_rpm=1)
+
+        post(client)
+        post(client)  # 429
+
+        assert 'status="429"' in client.get("/metrics").text
+
+    def test_malformed_requests_are_counted(self, fake_engine, respx_mock):
+        client = make_client(fake_engine, respx_mock)
+
+        client.post("/v1/chat/completions", content=b"not json", headers={"content-type": "application/json"})
+
+        assert 'status="400"' in client.get("/metrics").text

@@ -9,6 +9,10 @@ RUN pip install --no-cache-dir .
 
 EXPOSE 8000
 
+# laya downloads its checkpoints on the first routing decision; persist the
+# download cache so container restarts do not re-download it.
+VOLUME ["/root/.cache"]
+
 # Override at runtime with -e LAYA_ROUTER_* (see README) as needed.
 ENV LAYA_ROUTER_UPSTREAM_BASE_URL=https://api.openai.com/v1
 
