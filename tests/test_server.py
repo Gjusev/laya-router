@@ -155,8 +155,29 @@ def test_configured_upstream_api_key_overrides_forwarded_auth(fake_engine):
     assert route.calls.last.request.headers["Authorization"] == "Bearer proxy-key"
 
 
+def make_client_with(fake_engine, **settings_overrides) -> TestClient:
+    settings = Settings(
+        _env_file=None, upstream_base_url=TEST_UPSTREAM, **settings_overrides
+    )
+    return TestClient(create_app(settings=settings, engine=fake_engine))
+
+
 @mock_upstream
 def test_confidence_and_reason_headers_present(fake_engine):
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(side_effect=upstream_ok)
+    client = make_client(fake_engine)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "m", "messages": [{"role": "user", "content": "please summarize this text"}]},
+    )
+
+    assert response.headers["X-Laya-Confidence"] == "0.9"
+    assert response.headers["X-Laya-Reason"] == "complexity=simple"
+
+
+@mock_upstream
+def test_fast_path_skips_the_engine_entirely(fake_engine):
     mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(side_effect=upstream_ok)
     client = make_client(fake_engine)
 
@@ -165,8 +186,25 @@ def test_confidence_and_reason_headers_present(fake_engine):
         json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
     )
 
-    assert response.headers["X-Laya-Confidence"] == "0.9"
-    assert response.headers["X-Laya-Reason"] == "complexity=simple"
+    assert fake_engine.prompts == []
+    assert response.headers["X-Laya-Route"] == "cheap"
+    assert response.headers["X-Laya-Reason"] == "fast-path:trivial"
+    assert response.headers["X-Laya-Confidence"] == "1.0"
+
+
+@mock_upstream
+def test_low_confidence_escalates_to_frontier(fake_engine):
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(side_effect=upstream_ok)
+    # MEDIUMPLEASE -> standard label with 0.7 confidence; gate at 0.75 must escalate.
+    client = make_client_with(fake_engine, min_confidence=0.75)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "m", "messages": [{"role": "user", "content": "MEDIUMPLEASE summarize this"}]},
+    )
+
+    assert response.headers["X-Laya-Route"] == "frontier"
+    assert response.headers["X-Laya-Reason"] == "complexity=standard+low-confidence"
 
 
 async def sse_stream():

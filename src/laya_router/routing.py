@@ -7,10 +7,9 @@ stub router via `LayaRoutingEngine(router=...)` to stay offline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, Optional, Protocol
 
-from laya_router.policy import choose_tier
+from laya_router.policy import RoutingDecision, choose_tier
 
 # v1 question set (see plan section 3). One forward pass answers all three;
 # Phase 1 routes on `complexity`, the other two feed Phase 2 gating/backtest.
@@ -33,14 +32,6 @@ QUESTIONS: Dict[str, Dict[str, Any]] = {
         "instructions": "Would a wrong answer have a high cost?",
     },
 }
-
-
-@dataclass(frozen=True)
-class RoutingDecision:
-    tier: str
-    complexity: str
-    answer_confidence: float
-    reason: str
 
 
 class RoutingEngine(Protocol):

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # When None, the packaged default tiers.yaml is used.
     tiers_file: Optional[Path] = None
     upstream_timeout_s: float = 120.0
+    # Escalate to frontier when laya's answer_confidence falls below this.
+    # 0 disables the gate. TODO(tune via backtest cost/quality curve).
+    min_confidence: float = 0.55
 
 
 def default_tiers_file() -> Path:

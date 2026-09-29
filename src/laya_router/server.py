@@ -16,6 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from laya_router.config import Settings, load_tiers
+from laya_router.policy import RoutingDecision, apply_min_confidence, fast_path_tier
 from laya_router.routing import LayaRoutingEngine, RoutingEngine
 
 
@@ -26,6 +27,16 @@ def prompt_text(messages: list[Dict[str, Any]]) -> str:
         for message in messages
         if message.get("content") is not None
     )
+
+
+def route_request(engine: RoutingEngine, prompt: str, min_confidence: float) -> RoutingDecision:
+    """Fast path first (no model call); otherwise laya + confidence gate."""
+    fast = fast_path_tier(prompt)
+    if fast is not None:
+        return RoutingDecision(
+            tier=fast, complexity="fast-path", answer_confidence=1.0, reason="fast-path:trivial"
+        )
+    return apply_min_confidence(engine.decide(prompt), min_confidence)
 
 
 def create_app(
@@ -56,7 +67,9 @@ def create_app(
                 content={"error": {"message": "request body must be a JSON object", "type": "invalid_request_error"}},
             )
 
-        decision = await run_in_threadpool(engine.decide, prompt_text(body.get("messages", [])))
+        decision = await run_in_threadpool(
+            route_request, engine, prompt_text(body.get("messages", [])), settings.min_confidence
+        )
         model = tiers.model_for(decision.tier)
         body["model"] = model
 
