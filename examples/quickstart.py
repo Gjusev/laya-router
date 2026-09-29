@@ -1,7 +1,7 @@
-"""Phase 1 acceptance criterion in 10 lines: use the proxy with the OpenAI SDK
-without changing anything else in your code.
+"""Use the proxy with the stock OpenAI SDK — only base_url changes.
 
-First: pip install openai && laya-router   (serves http://127.0.0.1:8000/v1)
+First: pip install git+https://github.com/Gjusev/laya-router.git openai
+       laya-router   (serves http://127.0.0.1:8000/v1)
 """
 
 from openai import OpenAI
