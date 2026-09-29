@@ -27,7 +27,8 @@ from openai import OpenAI
 from laya_router.config import TiersConfig, load_tiers
 from laya_router.routing import LayaRoutingEngine
 
-MAX_TOKENS = 800
+# Generous caps: reasoning models spend tokens thinking before the answer.
+MAX_TOKENS = {"cheap": 2048, "frontier": 4096}
 
 
 def build_tiers(path: Path | None) -> TiersConfig:
@@ -38,16 +39,21 @@ def build_tiers(path: Path | None) -> TiersConfig:
     return load_tiers(Path(env_path) if env_path else None)
 
 
-def answer(client: OpenAI, model: str, prompt: str) -> dict:
+def answer(client: OpenAI, model: str, prompt: str, max_tokens: int) -> dict:
     completion = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=MAX_TOKENS,
+        max_tokens=max_tokens,
+        # GLM 5.x always reasons; low keeps the budget on the answer itself.
+        extra_body={"reasoning_effort": "low"},
     )
+    content = completion.choices[0].message.content or ""
+    if not content.strip():
+        raise RuntimeError(f"empty answer from {model} (reasoning consumed the budget?) for prompt: {prompt[:80]!r}")
     usage = completion.usage
     return {
         "model": model,
-        "content": completion.choices[0].message.content or "",
+        "content": content,
         "usage": {
             "input_tokens": usage.prompt_tokens,
             "output_tokens": usage.completion_tokens,
@@ -80,8 +86,8 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
                     "is_coding": decision.is_coding,
                     "needs_precision": decision.needs_precision,
                 },
-                "cheap": answer(client, tiers.cheap.model, prompt),
-                "frontier": answer(client, tiers.frontier.model, prompt),
+                "cheap": answer(client, tiers.cheap.model, prompt, MAX_TOKENS["cheap"]),
+                "frontier": answer(client, tiers.frontier.model, prompt, MAX_TOKENS["frontier"]),
             }
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
             print(f"[{i + 1}/{len(prompts)}] {entry['source']} -> router={decision.tier}")

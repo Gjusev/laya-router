@@ -74,8 +74,11 @@ def judge_pair(client: OpenAI, judge_model: str, record: dict, rng: random.Rando
         model=judge_model,
         messages=[{"role": "user", "content": RUBRIC.format(
             question=record["prompt"], answer_a=answer_a, answer_b=answer_b)}],
-        max_tokens=300,
+        # Reasoning models spend tokens thinking before the verdict; low
+        # effort keeps the budget on the verdict itself.
+        max_tokens=2048,
         temperature=0,
+        extra_body={"reasoning_effort": "low"},
     ).choices[0].message.content
     verdict = parse_verdict(reply or "")
     return {

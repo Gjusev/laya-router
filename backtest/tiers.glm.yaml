@@ -1,13 +1,16 @@
 # Tier configuration for running the backtest on Z.ai (GLM).
-# glm-4.5-flash is free; glm-4.5 list prices are USD per 1M tokens.
+# Prices are USD per 1M tokens, as configured for cost estimation:
+# - glm-5.3-flash: Z.ai published rates ($0.15 input / $0.50 output)
+# - glm-5.3: OpenRouter listing rates ($0.5614 input / $1.764 output);
+#   direct z.ai rates may differ — edit to match your billing.
 # Usage: make backtest-glm   (needs OPENAI_API_KEY set to a Z.ai key)
 cheap:
-  model: glm-4.5-flash
+  model: glm-5.3-flash
   price:
-    input_per_m: 0.0
-    output_per_m: 0.0
+    input_per_m: 0.15
+    output_per_m: 0.50
 frontier:
-  model: glm-4.5
+  model: glm-5.3
   price:
-    input_per_m: 0.60
-    output_per_m: 2.20
+    input_per_m: 0.5614
+    output_per_m: 1.764
