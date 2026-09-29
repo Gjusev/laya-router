@@ -30,12 +30,23 @@ from laya_router.routing import LayaRoutingEngine, RoutingEngine
 
 
 def prompt_text(messages: list[Dict[str, Any]]) -> str:
-    """Flatten a chat request into the text the router classifies."""
-    return "\n".join(
-        str(message.get("content") or "")
-        for message in messages
-        if message.get("content") is not None
-    )
+    """Flatten a chat request into the text the router classifies.
+
+    Multimodal content (a list of typed parts) contributes its text parts
+    only; images and other part types are ignored for routing.
+    """
+    parts: list[str] = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            parts.extend(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+    return "\n".join(parts)
 
 
 def route_request(engine: RoutingEngine, prompt: str, min_confidence: float) -> RoutingDecision:

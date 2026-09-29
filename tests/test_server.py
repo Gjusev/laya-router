@@ -384,3 +384,28 @@ def test_non_object_json_body_returns_400(fake_engine):
 
     assert response.status_code == 400
     assert "invalid_request_error" in response.text
+
+
+@mock_upstream
+def test_multimodal_content_routes_on_text_parts_only(fake_engine):
+    mock_upstream.post(f"{TEST_UPSTREAM}/chat/completions").mock(side_effect=upstream_ok)
+    client = make_client(fake_engine)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "m",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is in this image?"},
+                        {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}},
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_engine.prompts == ["What is in this image?"]

@@ -12,7 +12,8 @@ from typing import Any, Dict, Optional, Protocol
 from laya_router.policy import RoutingDecision, choose_tier
 
 # v1 question set (see plan section 3). One forward pass answers all three;
-# Phase 1 routes on `complexity`, the other two feed Phase 2 gating/backtest.
+# routing uses `complexity` — is_coding/needs_precision are recorded for the
+# backtest analysis and future gating rules.
 QUESTIONS: Dict[str, Dict[str, Any]] = {
     "complexity": {
         "type": "choice",
@@ -58,4 +59,6 @@ class LayaRoutingEngine:
             complexity=complexity,
             answer_confidence=confidence,
             reason=f"complexity={complexity}",
+            is_coding=float(answers.get("is_coding", {}).get("noul", 0.0)),
+            needs_precision=float(answers.get("needs_precision", {}).get("noul", 0.0)),
         )

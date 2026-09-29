@@ -30,6 +30,9 @@ class RoutingDecision:
     complexity: str
     answer_confidence: float
     reason: str
+    # Auxiliary laya answers (0-1 noul scores), recorded for backtest analysis.
+    is_coding: float = 0.0
+    needs_precision: float = 0.0
 
 
 def choose_tier(complexity: str) -> str:

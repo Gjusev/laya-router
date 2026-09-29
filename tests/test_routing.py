@@ -58,6 +58,8 @@ class TestLayaRoutingEngine:
             complexity="complex",
             answer_confidence=0.42,
             reason="complexity=complex",
+            is_coding=0.1,
+            needs_precision=0.2,
         )
 
     def test_simple_payload_maps_to_cheap(self):

@@ -68,6 +68,8 @@ def run(dataset_path: Path, out_path: Path, limit: int | None) -> None:
                     "complexity": decision.complexity,
                     "answer_confidence": decision.answer_confidence,
                     "reason": decision.reason,
+                    "is_coding": decision.is_coding,
+                    "needs_precision": decision.needs_precision,
                 },
                 "cheap": answer(client, tiers.cheap.model, prompt),
                 "frontier": answer(client, tiers.frontier.model, prompt),
