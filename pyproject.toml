@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "laya-router"
+version = "0.1.0"
+description = "OpenAI-compatible proxy that routes prompts to cheap or frontier LLMs using a local System 1 decision model (laya)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+keywords = ["llm-routing", "cost-optimization", "openai-api", "proxy", "laya", "system-one"]
+dependencies = ["laya>=0.3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/laya_router"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
