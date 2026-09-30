@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from openai import OpenAI
 
-from run_backtest import build_tiers
+from run_backtest import build_tiers, with_rate_limit_retries
 
 RUBRIC = """You are an impartial judge evaluating two answers to the same question.
 
@@ -69,16 +69,20 @@ def to_outcome(verdict: str, cheap_is: str) -> str:
 def judge_pair(client: OpenAI, judge_model: str, record: dict, cheap_is: str) -> dict:
     answer_a = record["cheap"]["content"] if cheap_is == "a" else record["frontier"]["content"]
     answer_b = record["frontier"]["content"] if cheap_is == "a" else record["cheap"]["content"]
-    reply = client.chat.completions.create(
-        model=judge_model,
-        messages=[{"role": "user", "content": RUBRIC.format(
-            question=record["prompt"], answer_a=answer_a, answer_b=answer_b)}],
-        # Reasoning models spend tokens thinking before the verdict; low
-        # effort keeps the budget on the verdict itself.
-        max_tokens=2048,
-        temperature=0,
-        extra_body={"reasoning_effort": "low"},
-    ).choices[0].message.content
+
+    def call() -> str:
+        return client.chat.completions.create(
+            model=judge_model,
+            messages=[{"role": "user", "content": RUBRIC.format(
+                question=record["prompt"], answer_a=answer_a, answer_b=answer_b)}],
+            # Reasoning models spend tokens thinking before the verdict; low
+            # effort keeps the budget on the verdict itself.
+            max_tokens=2048,
+            temperature=0,
+            extra_body={"reasoning_effort": "low"},
+        ).choices[0].message.content
+
+    reply = with_rate_limit_retries(call)
     verdict = parse_verdict(reply or "")
     return {
         "id": record["id"],

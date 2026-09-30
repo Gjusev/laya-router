@@ -18,17 +18,31 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 from laya_router.config import TiersConfig, load_tiers
 from laya_router.routing import LayaRoutingEngine
 
 # Generous caps: reasoning models spend tokens thinking before the answer.
 MAX_TOKENS = {"cheap": 2048, "frontier": 4096}
+
+
+def with_rate_limit_retries(fn, attempts: int = 6, base_delay: float = 5.0):
+    """Run fn, retrying on upstream rate limits with exponential backoff."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except RateLimitError:
+            if attempt == attempts - 1:
+                raise
+            delay = base_delay * (2**attempt)
+            print(f"rate limited; retrying in {delay:.0f}s", flush=True)
+            time.sleep(delay)
 
 
 def build_tiers(path: Path | None) -> TiersConfig:
@@ -87,6 +101,8 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
 
     def fetch(entry: dict) -> dict:
         decision = decisions[entry["id"]]
+        cheap = with_rate_limit_retries(lambda: answer(client, tiers.cheap.model, entry["prompt"], MAX_TOKENS["cheap"]))
+        frontier = with_rate_limit_retries(lambda: answer(client, tiers.frontier.model, entry["prompt"], MAX_TOKENS["frontier"]))
         return {
             "id": entry["id"],
             "source": entry["source"],
@@ -99,8 +115,8 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
                 "is_coding": decision.is_coding,
                 "needs_precision": decision.needs_precision,
             },
-            "cheap": answer(client, tiers.cheap.model, entry["prompt"], MAX_TOKENS["cheap"]),
-            "frontier": answer(client, tiers.frontier.model, entry["prompt"], MAX_TOKENS["frontier"]),
+            "cheap": cheap,
+            "frontier": frontier,
         }
 
     written = 0
