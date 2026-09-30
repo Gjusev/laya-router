@@ -66,8 +66,7 @@ def to_outcome(verdict: str, cheap_is: str) -> str:
     return "win" if verdict == cheap_is else "lose"
 
 
-def judge_pair(client: OpenAI, judge_model: str, record: dict, rng: random.Random) -> dict:
-    cheap_is = rng.choice(["a", "b"])
+def judge_pair(client: OpenAI, judge_model: str, record: dict, cheap_is: str) -> dict:
     answer_a = record["cheap"]["content"] if cheap_is == "a" else record["frontier"]["content"]
     answer_b = record["frontier"]["content"] if cheap_is == "a" else record["cheap"]["content"]
     reply = client.chat.completions.create(
@@ -92,7 +91,7 @@ def judge_pair(client: OpenAI, judge_model: str, record: dict, rng: random.Rando
     }
 
 
-def run(results_path: Path, out_path: Path, limit: int | None, seed: int, tiers_path: Path | None) -> None:
+def run(results_path: Path, out_path: Path, limit: int | None, seed: int, tiers_path: Path | None, workers: int = 1) -> None:
     records = [json.loads(line) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if limit:
         records = records[:limit]
@@ -109,13 +108,34 @@ def run(results_path: Path, out_path: Path, limit: int | None, seed: int, tiers_
             if line.strip()
         }
     remaining = [r for r in records if r["id"] not in done_ids]
+    # Blind positions drawn up front (deterministic per seed) so parallel
+    # execution cannot change the assignment.
+    assignments = {r["id"]: rng.choice(["a", "b"]) for r in remaining}
+
+    def fetch(record: dict) -> dict:
+        return judge_pair(client, judge_model, record, assignments[record["id"]])
+
+    written = 0
     with out_path.open("a", encoding="utf-8") as out:  # append: resumable
-        for i, record in enumerate(remaining):
-            judgement = judge_pair(client, judge_model, record, rng)
-            out.write(json.dumps(judgement, ensure_ascii=False) + "\n")
-            out.flush()
-            print(f"[{i + 1}/{len(remaining)}] {record['source']} -> {judgement['outcome']}", flush=True)
-    print(f"wrote {len(remaining)} new judgements to {out_path} ({len(done_ids)} already present)")
+        if workers <= 1:
+            for record in remaining:
+                judgement = fetch(record)
+                out.write(json.dumps(judgement, ensure_ascii=False) + "\n")
+                out.flush()
+                written += 1
+                print(f"[{written}/{len(remaining)}] {record['source']} -> {judgement['outcome']}", flush=True)
+        else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(fetch, record) for record in remaining]
+                for future in as_completed(futures):
+                    judgement = future.result()
+                    out.write(json.dumps(judgement, ensure_ascii=False) + "\n")
+                    out.flush()
+                    written += 1
+                    print(f"[{written}/{len(remaining)}] {judgement['source']} -> {judgement['outcome']}", flush=True)
+    print(f"wrote {written} new judgements to {out_path} ({len(done_ids)} already present)")
 
 
 def main() -> None:
@@ -125,8 +145,9 @@ def main() -> None:
     parser.add_argument("--tiers", type=Path, default=None, help="tiers.yaml override (default: LAYA_ROUTER_TIERS_FILE or packaged)")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--seed", type=int, default=13)
+    parser.add_argument("--workers", type=int, default=1, help="parallel judge requests")
     args = parser.parse_args()
-    run(args.results, args.out, args.limit, args.seed, args.tiers)
+    run(args.results, args.out, args.limit, args.seed, args.tiers, args.workers)
 
 
 if __name__ == "__main__":

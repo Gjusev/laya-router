@@ -61,7 +61,7 @@ def answer(client: OpenAI, model: str, prompt: str, max_tokens: int) -> dict:
     }
 
 
-def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path | None) -> None:
+def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path | None, workers: int = 1) -> None:
     prompts = [json.loads(line) for line in dataset_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if limit:
         prompts = prompts[:limit]
@@ -78,29 +78,52 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
             if line.strip()
         }
     remaining = [e for e in prompts if e["id"] not in done_ids]
+
+    # Phase 1: local routing decisions, sequential (the laya engine is not
+    # documented as thread-safe; decisions are fast and free).
+    decisions = {}
+    for entry in remaining:
+        decisions[entry["id"]] = engine.decide(entry["prompt"])
+
+    def fetch(entry: dict) -> dict:
+        decision = decisions[entry["id"]]
+        return {
+            "id": entry["id"],
+            "source": entry["source"],
+            "prompt": entry["prompt"],
+            "router": {
+                "tier": decision.tier,
+                "complexity": decision.complexity,
+                "answer_confidence": decision.answer_confidence,
+                "reason": decision.reason,
+                "is_coding": decision.is_coding,
+                "needs_precision": decision.needs_precision,
+            },
+            "cheap": answer(client, tiers.cheap.model, entry["prompt"], MAX_TOKENS["cheap"]),
+            "frontier": answer(client, tiers.frontier.model, entry["prompt"], MAX_TOKENS["frontier"]),
+        }
+
+    written = 0
     with out_path.open("a", encoding="utf-8") as out:  # append: resumable
-        for i, entry in enumerate(remaining):
-            prompt = entry["prompt"]
-            decision = engine.decide(prompt)
-            record = {
-                "id": entry["id"],
-                "source": entry["source"],
-                "prompt": prompt,
-                "router": {
-                    "tier": decision.tier,
-                    "complexity": decision.complexity,
-                    "answer_confidence": decision.answer_confidence,
-                    "reason": decision.reason,
-                    "is_coding": decision.is_coding,
-                    "needs_precision": decision.needs_precision,
-                },
-                "cheap": answer(client, tiers.cheap.model, prompt, MAX_TOKENS["cheap"]),
-                "frontier": answer(client, tiers.frontier.model, prompt, MAX_TOKENS["frontier"]),
-            }
-            out.write(json.dumps(record, ensure_ascii=False) + "\n")
-            out.flush()
-            print(f"[{i + 1}/{len(remaining)}] {entry['source']} -> router={decision.tier}", flush=True)
-    print(f"wrote {len(remaining)} new records to {out_path} ({len(done_ids)} already present)")
+        if workers <= 1:
+            records = (fetch(entry) for entry in remaining)
+            for entry, record in zip(remaining, records):
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                out.flush()
+                written += 1
+                print(f"[{written}/{len(remaining)}] {entry['source']} -> router={record['router']['tier']}", flush=True)
+        else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(fetch, entry): entry for entry in remaining}
+                for future in as_completed(futures):
+                    record = future.result()
+                    out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    out.flush()
+                    written += 1
+                    print(f"[{written}/{len(remaining)}] {record['source']} -> router={record['router']['tier']}", flush=True)
+    print(f"wrote {written} new records to {out_path} ({len(done_ids)} already present)")
 
 
 def main() -> None:
@@ -109,8 +132,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("backtest/results.jsonl"))
     parser.add_argument("--tiers", type=Path, default=None, help="tiers.yaml override (default: LAYA_ROUTER_TIERS_FILE or packaged)")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--workers", type=int, default=1, help="parallel upstream requests (routing itself stays local and sequential)")
     args = parser.parse_args()
-    run(args.dataset, args.out, args.limit, args.tiers)
+    run(args.dataset, args.out, args.limit, args.tiers, args.workers)
 
 
 if __name__ == "__main__":

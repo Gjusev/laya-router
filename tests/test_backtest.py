@@ -5,7 +5,6 @@ Expected table numbers in test_analyze_table are computed by hand from the
 fixture usages and the tiers.yaml list prices, independently of analyze.py.
 """
 
-import random
 import sys
 from pathlib import Path
 
@@ -93,12 +92,12 @@ class TestJudgePair:
             "frontier": {"content": "frontier answer"},
         }
 
-        judgement = judge.judge_pair(client, "judge-model", record, random.Random(0))
+        judgement = judge.judge_pair(client, "judge-model", record, cheap_is="a")
 
-        # The judge said B; the outcome must follow from where cheap landed.
+        # The judge said B; cheap was A, so cheap loses.
+        assert judgement["cheap_is"] == "a"
         assert judgement["verdict"] == "b"
-        expected = "lose" if judgement["cheap_is"] == "a" else "win"
-        assert judgement["outcome"] == expected
+        assert judgement["outcome"] == "lose"
         sent = client.chat.completions.requests[0]
         assert sent["model"] == "judge-model"
         assert sent["temperature"] == 0
@@ -116,7 +115,7 @@ class TestJudgePair:
             "frontier": {"content": "ANSWER_FRONTIER"},
         }
 
-        judge.judge_pair(client, "judge-model", record, random.Random(1))
+        judge.judge_pair(client, "judge-model", record, cheap_is="b")
 
         rubric = client.chat.completions.requests[0]["messages"][0]["content"]
         assert "impartial judge" in rubric
