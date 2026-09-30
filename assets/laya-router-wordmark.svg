@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="450" height="88" viewBox="0 0 450 88" role="img" aria-label="laya-router">
+  <rect width="88" height="88" rx="22" fill="#111111"/>
+  <path d="M18 44h22M40 44c13 0 16-16 30-16M40 44c13 0 16 16 30 16" fill="none" stroke="#f7f6f3" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="18" cy="44" r="6" fill="#f7f6f3"/>
+  <circle cx="70" cy="28" r="7" fill="#b9e1bd"/>
+  <circle cx="70" cy="60" r="7" fill="#b9def8"/>
+  <text x="112" y="58" fill="#111111" font-family="Georgia, serif" font-size="48">laya-router</text>
+</svg>

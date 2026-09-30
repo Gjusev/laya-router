@@ -1,156 +1,161 @@
-# laya-router
+<p align="center">
+  <img src="assets/laya-router-wordmark.svg" alt="laya-router" width="360" />
+</p>
 
-> OpenAI-compatible proxy that routes every prompt to a cheap or a frontier model using a local System 1 decision model.
+<p align="center">
+  <strong>The local routing layer for OpenAI-compatible LLM apps.</strong><br />
+  Send each prompt to the affordable model when it is enough, and to the frontier model when it matters.
+</p>
 
-[![CI](https://github.com/Gjusev/laya-router/actions/workflows/ci.yml/badge.svg)](https://github.com/Gjusev/laya-router/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+<p align="center">
+  <a href="https://github.com/Gjusev/laya-router/actions/workflows/ci.yml"><img src="https://github.com/Gjusev/laya-router/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://pypi.org/project/laya-router/"><img src="https://img.shields.io/pypi/v/laya-router?label=PyPI&color=111111" alt="PyPI" /></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-346538" alt="Apache 2.0 license" /></a>
+</p>
 
-Point your OpenAI SDK `base_url` at the proxy and change **nothing else**. A local [laya](https://github.com/NandhaKishorM/laya) model decides, per prompt, whether it deserves the frontier model or the cheap one — every routing decision runs on your machine and costs $0 in API terms.
+<p align="center">
+  <a href="#quickstart"><strong>Get started</strong></a> ·
+  <a href="#watch-the-demo"><strong>Watch demo</strong></a> ·
+  <a href="#how-it-works"><strong>How it works</strong></a> ·
+  <a href="#configuration"><strong>Configure</strong></a>
+</p>
 
-Built on [laya](https://github.com/NandhaKishorM/laya), the open-source System 1 decision engine (Apache 2.0).
+<p align="center">
+  <img src="assets/social-preview.png" alt="laya-router routes prompts to the cheap or frontier model" width="100%" />
+</p>
 
-## Contents
+## One base URL. The right model for every prompt.
 
-- [How it works](#how-it-works)
-- [Quickstart](#quickstart)
-- [Routing behavior](#routing-behavior)
-- [API compatibility](#api-compatibility)
-- [Configuration](#configuration)
-- [Operations](#operations)
-- [Backtest (reproducible)](#backtest-reproducible)
-- [Limitations](#limitations)
-- [Development](#development)
-- [Roadmap](#roadmap)
-- [License](#license)
+`laya-router` is an OpenAI-compatible proxy. Point an existing SDK at it, keep the rest of the request unchanged, and a local [laya](https://github.com/NandhaKishorM/laya) System 1 model decides which upstream tier should answer.
 
-## How it works
+Routing runs on your machine and costs **$0 in API charges**. It is deliberately conservative: complex or uncertain requests are escalated to the frontier tier; the cheap tier handles the rest.
 
-![How laya-router works](assets/how-it-works.svg)
+| Measured on the published backtest | What it means |
+| --- | --- |
+| **80.6%** routed to the cheap tier | Fewer requests pay frontier prices |
+| **54.9%** estimated cost reduction | Compared with always using the frontier tier |
+| **79.3%** cheap win/tie rate | Blind-judge result among cheap-routed prompts |
+| **$0** per routing decision | The decision model is local |
 
-The client's `model` field is ignored — the router picks the model. Everything else in the request body (temperature, tools, `max_tokens`, …) is forwarded byte-exact.
+These figures come from 180 prompts using a GLM cheap/frontier pair; see [the reproducible evaluation](#backtest-reproducible) for methodology and caveats.
 
-<details>
-<summary>Pipeline in text form</summary>
+## Watch the demo
 
-```
-OpenAI SDK / curl / any client
-        │  (base_url = http://127.0.0.1:8000/v1)
-        ▼
-┌─────────────────────── laya-router (FastAPI) ───────────────────────┐
-│ 1. Fast path (regex, ~0 ms) ─────────────────────────────► cheap    │
-│ 2. laya Router (local, one forward pass) → complexity + confidence  │
-│ 3. Policy: complex OR low-confidence → frontier; else → cheap      │
-│ 4. httpx → upstream (SSE passthrough when stream=true)             │
-│ 5. Observability: X-Laya-* headers, /metrics, JSONL decision log   │
-└─────────────────────────────────────────────────────────────────────┘
-```
+<video src="brag-output/brag.mp4" poster="brag-output/brag.jpg" controls muted playsinline width="960">
+  <a href="brag-output/brag.mp4"><img src="brag-output/brag.jpg" alt="Watch the 20-second laya-router product demo" width="960" /></a>
+</video>
 
-</details>
+<p align="center">
+  <a href="brag-output/brag.mp4"><strong>Play the 20-second demo</strong></a> · A client changes one URL; response headers show the local routing decision.
+</p>
+
+> If a Markdown renderer does not support inline video, use the play link above. The MP4 and its poster are versioned with the repository.
 
 ## Quickstart
 
-The proxy speaks the OpenAI API and forwards to any OpenAI-compatible upstream (default: `https://api.openai.com/v1`).
-
-**Option A — pip:**
+Install the proxy, provide an upstream key (or forward each client's key), and run it:
 
 ```bash
 pip install laya-router
-export LAYA_ROUTER_UPSTREAM_API_KEY=sk-...   # or forward client keys, see Configuration
-laya-router                                  # serves http://127.0.0.1:8000/v1
+export LAYA_ROUTER_UPSTREAM_API_KEY=sk-...
+laya-router
+# Serving OpenAI-compatible endpoints at http://127.0.0.1:8000/v1
 ```
 
-**Option B — Docker:**
+Then change only `base_url` in a normal OpenAI client:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8000/v1",
+    api_key="sk-...",  # forwarded when no upstream key is configured
+)
+
+completion = client.chat.completions.create(
+    model="ignored-by-proxy",
+    messages=[{"role": "user", "content": "Say hi in three words"}],
+)
+
+print(completion.choices[0].message.content)
+```
+
+The client's `model` value is intentionally ignored: the router chooses it. Other body fields, including `temperature`, tools, and `max_tokens`, are forwarded untouched.
+
+### Other ways to run it
 
 ```bash
+# Docker
 docker build -t laya-router .
 docker run -p 8000:8000 -e LAYA_ROUTER_UPSTREAM_API_KEY=sk-... laya-router
-```
 
-**Option C — from source** (Python 3.10+, [uv](https://docs.astral.sh/uv/)):
-
-```bash
+# From source (Python 3.10+, uv)
 git clone https://github.com/Gjusev/laya-router.git && cd laya-router
 uv venv && uv pip install -e ".[dev]"
 uv run laya-router
 ```
 
-Then adopt it in two lines — the stock OpenAI client, only `base_url` changes:
+Runnable examples: [`examples/quickstart.py`](examples/quickstart.py) and [`examples/streaming.py`](examples/streaming.py).
 
-```python
-from openai import OpenAI
+## How it works
 
-client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="sk-...")
-completion = client.chat.completions.create(
-    model="ignored-by-proxy",
-    messages=[{"role": "user", "content": "Say hi in three words"}],
-)
-print(completion.model, "->", completion.choices[0].message.content)
-```
+![Animated diagram: the client sends prompts to laya-router, which makes a local decision and routes to a cheap or frontier upstream tier](assets/how-it-works.svg)
 
-Or with curl:
+The decision pipeline has three layers, from cheapest to most cautious:
+
+1. **Fast path** -- trivial greetings and zero-content prompts match a regex and go directly to the cheap tier without model inference.
+2. **Local laya decision** -- one forward pass labels the prompt `simple`, `standard`, or `complex` and returns a calibrated confidence.
+3. **Confidence gate** -- complex, unknown, or low-confidence requests go to the frontier tier. The default favors answer quality when the router is unsure.
+
+Every response makes the choice inspectable:
 
 ```console
 $ curl -s http://127.0.0.1:8000/v1/chat/completions \
     -H "Authorization: Bearer sk-..." -H "Content-Type: application/json" \
     -d '{"model":"ignored","messages":[{"role":"user","content":"Say hi"}]}' -i
+
 HTTP/1.1 200 OK
 x-laya-route: cheap
 x-laya-model: gpt-4o-mini
 x-laya-confidence: 0.8957
 x-laya-reason: complexity=simple
-content-type: application/json
-...
 ```
 
-More runnable examples: [`examples/quickstart.py`](examples/quickstart.py) and [`examples/streaming.py`](examples/streaming.py).
-
-> **First request is slow by design:** laya loads its decision checkpoints once (~10 s cold start on CPU; kept warm afterwards). Warm routing decisions measured on this project's benchmark run (AMD64 CPU, 179 prompts, [`backtest/bench_latency.py`](backtest/bench_latency.py)): p50 460 ms, p95 1.4 s, p99 2.7 s — free in API cost, not in latency; run the proxy next to your workload if you are latency-sensitive.
-
-## Routing behavior
-
-Three layers, cheapest first:
-
-1. **Fast path** — greetings and other zero-content prompts match a regex and go straight to the cheap tier without invoking the model at all (`x-laya-reason: fast-path:trivial`).
-2. **laya decision** — one local forward pass classifies the prompt (`simple` / `standard` / `complex`) with a calibrated confidence.
-3. **Confidence gate** — if `answer_confidence` is below `LAYA_ROUTER_MIN_CONFIDENCE`, the request escalates to frontier (reason gains `+low-confidence`). Unknown complexity labels also escalate: spend more rather than risk quality.
-
-Response headers on every request:
-
-| Header | Meaning |
-|---|---|
-| `X-Laya-Route` | Tier chosen: `cheap` or `frontier` |
+| Response header | Meaning |
+| --- | --- |
+| `X-Laya-Route` | Chosen tier: `cheap` or `frontier` |
 | `X-Laya-Model` | Upstream model actually used |
-| `X-Laya-Confidence` | laya's calibrated confidence for the decision (1.0 on the fast path) |
-| `X-Laya-Reason` | Decision trace: `complexity=…`, `+low-confidence`, or `fast-path:trivial` |
+| `X-Laya-Confidence` | Calibrated decision confidence (`1.0` on the fast path) |
+| `X-Laya-Reason` | Trace such as `complexity=simple`, `+low-confidence`, or `fast-path:trivial` |
 
-## API compatibility
+## Compatibility
+
+The proxy forwards to any OpenAI-compatible upstream. The default upstream is `https://api.openai.com/v1`; it can also sit in front of providers such as vLLM, Ollama, OpenRouter, or Z.ai.
 
 | Surface | Status |
-|---|---|
-| `POST /v1/chat/completions` (non-streaming) | ✅ Full passthrough, only `model` swapped |
-| `POST /v1/chat/completions` (`stream: true`) | ✅ SSE relayed as it arrives |
-| Tool calls / JSON mode / other body fields | ⚙️ Forwarded untouched (passthrough should carry them; not yet covered by tests) |
-| `GET /healthz`, `GET /metrics` | ✅ Operational endpoints (proxy-specific) |
-| `/v1/embeddings`, `/v1/models`, other endpoints | ❌ Out of scope for v1 — see [Roadmap](#roadmap) |
-
-Out of scope for v1 (by design): embeddings, formally supported tool-calls, multi-tenant key management, admin UI.
+| --- | --- |
+| `POST /v1/chat/completions` | Full request passthrough; only the upstream model is swapped |
+| Streaming chat completions | SSE is relayed as it arrives |
+| Tools, JSON mode, and other request fields | Passed through unchanged (tool calls are not yet separately covered by tests) |
+| `GET /healthz` and `GET /metrics` | Built-in operational endpoints |
+| Embeddings, models, and other OpenAI endpoints | Out of scope for v1 |
 
 ## Configuration
 
-All settings come from `LAYA_ROUTER_*` environment variables (or a `.env` file):
+All options use `LAYA_ROUTER_*` environment variables and can also be loaded from a `.env` file.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `LAYA_ROUTER_UPSTREAM_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible API (vLLM, Ollama, OpenRouter, …) |
-| `LAYA_ROUTER_UPSTREAM_API_KEY` | unset | When unset, each client's `Authorization` header is forwarded as-is |
-| `LAYA_ROUTER_TIERS_FILE` | packaged `tiers.yaml` | Which model to use per tier, and list prices for cost estimation |
-| `LAYA_ROUTER_UPSTREAM_TIMEOUT_S` | `120` | Upstream request timeout |
-| `LAYA_ROUTER_MIN_CONFIDENCE` | `0.45` | Escalate below this confidence; `0` disables the gate (see the calibration sweep under Backtest) |
-| `LAYA_ROUTER_DECISION_LOG` | unset | Path for the JSONL decision log (one line per request) |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LAYA_ROUTER_UPSTREAM_BASE_URL` | `https://api.openai.com/v1` | Target OpenAI-compatible API |
+| `LAYA_ROUTER_UPSTREAM_API_KEY` | unset | Use this key upstream, or forward the client's `Authorization` header when unset |
+| `LAYA_ROUTER_TIERS_FILE` | packaged `tiers.yaml` | Models and list prices for the two tiers |
+| `LAYA_ROUTER_UPSTREAM_TIMEOUT_S` | `120` | Upstream request timeout in seconds |
+| `LAYA_ROUTER_MIN_CONFIDENCE` | `0.45` | Escalate below this value; `0` disables the confidence gate |
+| `LAYA_ROUTER_DECISION_LOG` | unset | JSONL decision-log path |
 | `LAYA_ROUTER_RATE_LIMIT_RPM` | `0` (off) | Per-client-IP requests per minute |
 
-Tiers (packaged default, fully editable):
+The tier file is ordinary YAML, so the model pair is yours to choose:
 
 ```yaml
 cheap:
@@ -161,104 +166,82 @@ frontier:
   price: {input_per_m: 2.50, output_per_m: 10.00}
 ```
 
-## Operations
+## Production notes
 
-- **Liveness:** `GET /healthz` → `{"status": "ok"}`
-- **Prometheus:** `GET /metrics` — `laya_router_requests_total{tier,status}` (including 400/429/503 degraded paths) and `laya_router_routing_seconds`
-- **Decision log:** set `LAYA_ROUTER_DECISION_LOG` to record per-request JSONL: tier, model, complexity, confidence, reason, status, routing latency, and a truncated prompt preview
-- **Rate limit:** `LAYA_ROUTER_RATE_LIMIT_RPM` returns OpenAI-shaped 429s with `Retry-After`
-
-Degraded behavior is explicit: a failing routing engine yields a structured 503 (counted in metrics, logged), never a silent always-frontier fallback; upstream errors and non-JSON bodies pass through byte-exact with routing headers attached.
+- **Cold start:** laya loads its checkpoints once (about 10 seconds on CPU) and stays warm afterward.
+- **Warm routing latency:** on the included AMD64 benchmark (179 prompts), p50 was 460 ms, p95 1.4 s, and p99 2.7 s. Routing is free in API cost, not latency; run the proxy close to the workload when latency matters. Reproduce it with `make bench`.
+- **Metrics:** `GET /metrics` exposes `laya_router_requests_total{tier,status}` and `laya_router_routing_seconds`, including degraded paths.
+- **Decision log:** set `LAYA_ROUTER_DECISION_LOG` to record tier, model, complexity, confidence, reason, status, routing latency, and a truncated prompt preview as JSONL.
+- **Rate limiting:** set `LAYA_ROUTER_RATE_LIMIT_RPM` to return OpenAI-shaped `429` responses with `Retry-After`.
+- **Failure mode:** when the routing engine fails, the proxy returns an explicit structured `503`; it never silently sends everything to the frontier tier.
 
 ## Backtest (reproducible)
 
-The honest eval answers every prompt with **both** tiers, so routing mistakes are measurable, then a blind judge (fixed rubric, temperature 0, seeded A/B shuffle) compares the cheap answer against the frontier one. Definitions are published with the numbers: the router is *correct* when it routed cheap and the judge says win/tie, a *miss* when cheap loses, and *over-escalation* when it spent frontier money on a simple prompt.
+The evaluation sends every prompt to **both** tiers, then uses a blind judge (fixed rubric, temperature 0, seeded A/B order) to compare the answers. A cheap route is counted as correct when the cheap answer wins or ties; a cheap loss is a miss; a frontier route on a simple request is an over-escalation.
 
 ```bash
-export OPENAI_API_KEY=sk-...        # OpenAI budget: ~5-10 USD for 300 prompts x 2 tiers
-make backtest                       # dataset -> both-tier answers -> blind judge -> table
-```
+# OpenAI run: roughly $5-10 for 300 prompts x 2 tiers
+export OPENAI_API_KEY=sk-...
+make backtest
 
-Cheaper: run the same pipeline on **Z.ai (GLM)** — this is how the published numbers below were produced:
-
-```bash
+# Same pipeline with the published Z.ai GLM model pair
 export OPENAI_API_KEY=<your-z.ai-key>
-make backtest-glm                   # same eval, tiers from backtest/tiers.glm.yaml
+make backtest-glm
 ```
 
-Any other OpenAI-compatible upstream works the same way: point `OPENAI_BASE_URL` at it and pass a matching `--tiers` file (or set `LAYA_ROUTER_TIERS_FILE`).
+The published run uses 80 MT-Bench questions and 100 synthetic trivial prompts. Its tiers are `glm-5.3-flash` (cheap) and `glm-5.3` (frontier), with `glm-5.3` as judge. The underlying [dataset](backtest/dataset.jsonl), [tier answers](backtest/results.jsonl), and [judgements](backtest/judgements.jsonl) are committed.
 
-### Measured results (first published run)
+| Metric | Result |
+| --- | --- |
+| Prompts answered by both tiers | 180 |
+| Routed to cheap | 80.6% |
+| Cost saving vs. always-frontier | 54.9% |
+| Cheap win / tie / loss (cheap-routed) | 28 / 87 / 30 |
+| Routing precision (cheap win or tie) | 79.3% |
+| Costly over-escalations | 35 |
+| API cost of routing itself | $0 |
 
-Dataset: 80 MT-Bench questions + 100 synthetic trivial prompts (the seeded LMSYS-Chat-1M sample is still pending — TODO). Tiers: `glm-5.3-flash` (cheap) vs `glm-5.3` (frontier), both at `reasoning_effort=low`, judge `glm-5.3`. Raw evidence: [`backtest/dataset.jsonl`](backtest/dataset.jsonl), [`backtest/results.jsonl`](backtest/results.jsonl), [`backtest/judgements.jsonl`](backtest/judgements.jsonl).
+Confidence-gate calibration, simulated from the recorded per-prompt confidences:
 
-| Metric | Value |
-|---|---|
-| Prompts (both tiers answered) | 180 |
-| % routed to cheap | 80.6% |
-| Cost saving vs always-frontier | 54.9% |
-| Win/tie/lose of cheap vs frontier (cheap-routed, judged) | 28 / 87 / 30 |
-| Routing precision (cheap verdict win/tie) | 79.3% |
-| Over-escalations (frontier, costly only) | 35 |
-| Routing cost per 1,000 requests | $0 (local laya) |
+| `min_confidence` | Cheap routes | Cost saving | Misses | Precision |
+| --- | ---: | ---: | ---: | ---: |
+| `0.0` (off) | 80.6% | 54.9% | 30 | 79.3% |
+| `0.45` (default) | ~72% | ~46% | ~27 | ~79% |
+| `0.55` | 53.3% | 30.0% | 21 | 78.1% |
+| `0.70` | 27.2% | 10.4% | 10 | 79.6% |
 
-Confidence-gate calibration (simulated offline from recorded per-prompt confidences):
-
-| min_confidence | % cheap | cost saving | misses | precision |
-|---|---|---|---|---|
-| 0.0 (off) | 80.6% | 54.9% | 30 | 79.3% |
-| 0.45 (default) | ~72% | ~46% | ~27 | ~79% |
-| 0.55 | 53.3% | 30.0% | 21 | 78.1% |
-| 0.70 | 27.2% | 10.4% | 10 | 79.6% |
-
-Two honest findings from this run:
-
-- **Misses are dominated by judge noise, not routing error.** On the 100 trivial prompts (near-identical answers), the judge scored cheap 16 wins and 17 losses — a symmetric noise floor. Roughly half of the 30 recorded misses are likely noise, not real quality losses.
-- **The confidence gate buys little precision.** Precision stays flat (~79%) across the whole threshold range: raising the gate spends savings (~2 points per miss avoided) without improving correctness. The default (0.45) sits in the flat zone; cost-sensitive operators can disable it (`0`) and quality-sensitive ones can raise it.
-
-## Limitations
-
-- Single-process by design: the rate limiter and metrics are in-memory (fine for one replica; a shared store would be needed for a fleet).
-- The published backtest numbers come from one judge (`glm-5.3`) on one model pair (`glm-5.3-flash` vs `glm-5.3`); agreement with a second judge and results on other model pairs are not yet measured (TODO(measure)). The measured judge noise floor (~16% of trivial prompts scored non-tie) bounds the precision claims above.
-- The laya classifier labeled 142/180 prompts "simple" and only 3 "standard" — the question set under-detects the middle band; tuning the custom questions is the next quality lever.
-- The seeded LMSYS-Chat-1M sample (120 real user turns) is not yet in the dataset.
-- Routing adds a one-time checkpoint load (~10 s) and a per-decision CPU cost (measured p50 460 ms / p99 2.7 s on AMD64 — reproducible via `make bench`); it pays for itself on the first avoided frontier call, not in added latency.
+The evaluation has real limits: one judge and one model pair, a measurable judge-noise floor on trivial prompts, and too few middle-band prompts. Treat the numbers as transparent baseline evidence, not a universal quality claim. More detail is in [`backtest/`](backtest/).
 
 ## Development
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest            # unit + integration; fully offline, no checkpoints downloaded
-pytest -m slow    # opt-in: real laya engine (downloads checkpoints on first use)
-make backtest     # full eval pipeline (needs an OpenAI budget)
+pytest            # offline unit + integration tests
+pytest -m slow    # real laya engine; downloads checkpoints on first run
+make backtest     # full evaluation pipeline; needs an upstream API budget
 ```
 
-Project layout:
-
+```text
+src/laya_router/   FastAPI server, policy, routing, config, observability
+backtest/          Dataset builder, both-tier runner, blind judge, analysis
+examples/          OpenAI SDK and streaming examples
+tests/             Offline-by-default test suite; @slow marks checkpoint tests
+assets/            README diagrams, branding, and social-preview image
+brag-output/       20-second product demo and poster
 ```
-src/laya_router/
-  server.py        # FastAPI app: endpoint, rate limit, streaming relay
-  policy.py        # fast paths, tier choice, confidence gate, RoutingDecision
-  routing.py       # laya engine wrapper + the routing question set
-  config.py        # settings (pydantic-settings) + tiers.yaml loader
-  observability.py # Prometheus metrics + JSONL decision log
-backtest/          # dataset builder, both-tier runner, blind judge, analysis
-examples/          # quickstart.py, streaming.py
-tests/             # offline by default; @slow marks real-checkpoint tests
-```
-
-Contributions welcome — open an issue first for anything non-trivial, keep commits conventional (`feat:`, `fix:`, `test:`, `docs:`, `chore:`), and all code/docs in English.
 
 ## Roadmap
 
-- [x] MVP: `POST /v1/chat/completions` (non-streaming) with laya-based tier routing
-- [x] Streaming (SSE) passthrough
-- [x] Confidence gating + deterministic fast paths
-- [x] Observability: Prometheus `/metrics`, JSONL decision log, `/healthz`, Docker
-- [x] Reproducible backtest harness (`make backtest`)
-- [x] Published backtest numbers in the README (GLM pair; OpenAI-pair run pending)
-- [x] PyPI release (`pip install laya-router`)
+- [x] Chat completions and local laya tier routing
+- [x] SSE streaming passthrough
+- [x] Deterministic fast paths and confidence gating
+- [x] Prometheus metrics, decision logs, health endpoint, and Docker
+- [x] Reproducible backtest with published results
+- [x] PyPI distribution: `pip install laya-router`
+- [ ] Additional OpenAI-compatible endpoints
+
+Contributions are welcome. Please open an issue before non-trivial work, use conventional commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`), and keep code and documentation in English.
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
