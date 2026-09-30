@@ -70,8 +70,16 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
     client = OpenAI()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as out:
-        for i, entry in enumerate(prompts):
+    done_ids = set()
+    if out_path.exists():
+        done_ids = {
+            json.loads(line)["id"]
+            for line in out_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+    remaining = [e for e in prompts if e["id"] not in done_ids]
+    with out_path.open("a", encoding="utf-8") as out:  # append: resumable
+        for i, entry in enumerate(remaining):
             prompt = entry["prompt"]
             decision = engine.decide(prompt)
             record = {
@@ -90,8 +98,9 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
                 "frontier": answer(client, tiers.frontier.model, prompt, MAX_TOKENS["frontier"]),
             }
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
-            print(f"[{i + 1}/{len(prompts)}] {entry['source']} -> router={decision.tier}")
-    print(f"wrote {len(prompts)} records to {out_path}")
+            out.flush()
+            print(f"[{i + 1}/{len(remaining)}] {entry['source']} -> router={decision.tier}", flush=True)
+    print(f"wrote {len(remaining)} new records to {out_path} ({len(done_ids)} already present)")
 
 
 def main() -> None:

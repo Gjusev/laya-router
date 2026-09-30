@@ -101,12 +101,21 @@ def run(results_path: Path, out_path: Path, limit: int | None, seed: int, tiers_
     rng = random.Random(seed)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as out:
-        for i, record in enumerate(records):
+    done_ids = set()
+    if out_path.exists():
+        done_ids = {
+            json.loads(line)["id"]
+            for line in out_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+    remaining = [r for r in records if r["id"] not in done_ids]
+    with out_path.open("a", encoding="utf-8") as out:  # append: resumable
+        for i, record in enumerate(remaining):
             judgement = judge_pair(client, judge_model, record, rng)
             out.write(json.dumps(judgement, ensure_ascii=False) + "\n")
-            print(f"[{i + 1}/{len(records)}] {record['source']} -> {judgement['outcome']}")
-    print(f"wrote {len(records)} judgements to {out_path}")
+            out.flush()
+            print(f"[{i + 1}/{len(remaining)}] {record['source']} -> {judgement['outcome']}", flush=True)
+    print(f"wrote {len(remaining)} new judgements to {out_path} ({len(done_ids)} already present)")
 
 
 def main() -> None:
