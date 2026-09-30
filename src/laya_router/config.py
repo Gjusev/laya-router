@@ -52,8 +52,10 @@ class Settings(BaseSettings):
     tiers_file: Optional[Path] = None
     upstream_timeout_s: float = 120.0
     # Escalate to frontier when laya's answer_confidence falls below this.
-    # 0 disables the gate. TODO(tune via backtest cost/quality curve).
-    min_confidence: float = 0.55
+    # 0 disables the gate. Default 0.45 sits in the flat-precision zone of the
+    # published calibration sweep (see README: Backtest) — raising it costs
+    # savings without measurably improving precision on that dataset.
+    min_confidence: float = 0.45
     # JSONL decision log destination; None disables logging.
     decision_log: Optional[Path] = None
     # Per-client-IP request limit per minute; 0 disables the limit.

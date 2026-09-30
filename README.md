@@ -139,7 +139,7 @@ All settings come from `LAYA_ROUTER_*` environment variables (or a `.env` file):
 | `LAYA_ROUTER_UPSTREAM_API_KEY` | unset | When unset, each client's `Authorization` header is forwarded as-is |
 | `LAYA_ROUTER_TIERS_FILE` | packaged `tiers.yaml` | Which model to use per tier, and list prices for cost estimation |
 | `LAYA_ROUTER_UPSTREAM_TIMEOUT_S` | `120` | Upstream request timeout |
-| `LAYA_ROUTER_MIN_CONFIDENCE` | `0.55` | Escalate below this confidence; `0` disables the gate. TODO(tune via backtest cost/quality curve) |
+| `LAYA_ROUTER_MIN_CONFIDENCE` | `0.45` | Escalate below this confidence; `0` disables the gate (see the calibration sweep under Backtest) |
 | `LAYA_ROUTER_DECISION_LOG` | unset | Path for the JSONL decision log (one line per request) |
 | `LAYA_ROUTER_RATE_LIMIT_RPM` | `0` (off) | Per-client-IP requests per minute |
 
@@ -168,11 +168,11 @@ Degraded behavior is explicit: a failing routing engine yields a structured 503 
 The honest eval answers every prompt with **both** tiers, so routing mistakes are measurable, then a blind judge (fixed rubric, temperature 0, seeded A/B shuffle) compares the cheap answer against the frontier one. Definitions are published with the numbers: the router is *correct* when it routed cheap and the judge says win/tie, a *miss* when cheap loses, and *over-escalation* when it spent frontier money on a simple prompt.
 
 ```bash
-export OPENAI_API_KEY=sk-...        # budget: ~5-10 USD for 300 prompts x 2 tiers
+export OPENAI_API_KEY=sk-...        # OpenAI budget: ~5-10 USD for 300 prompts x 2 tiers
 make backtest                       # dataset -> both-tier answers -> blind judge -> table
 ```
 
-Cheaper: run the same pipeline on **Z.ai (GLM)**, where the cheap tier (`glm-4.5-flash`) is free — the run only pays for frontier answers and judge calls:
+Cheaper: run the same pipeline on **Z.ai (GLM)** — this is how the published numbers below were produced:
 
 ```bash
 export OPENAI_API_KEY=<your-z.ai-key>
@@ -181,26 +181,40 @@ make backtest-glm                   # same eval, tiers from backtest/tiers.glm.y
 
 Any other OpenAI-compatible upstream works the same way: point `OPENAI_BASE_URL` at it and pass a matching `--tiers` file (or set `LAYA_ROUTER_TIERS_FILE`).
 
-The `min_confidence` threshold should be calibrated on the resulting cost/quality curve — the same idea as calibrating a router threshold on your own traffic.
+### Measured results (first published run)
 
-Results (TODO(measure): publish after the first full run):
+Dataset: 80 MT-Bench questions + 100 synthetic trivial prompts (the seeded LMSYS-Chat-1M sample is still pending — TODO). Tiers: `glm-5.3-flash` (cheap) vs `glm-5.3` (frontier), both at `reasoning_effort=low`, judge `glm-5.3`. Raw evidence: [`backtest/dataset.jsonl`](backtest/dataset.jsonl), [`backtest/results.jsonl`](backtest/results.jsonl), [`backtest/judgements.jsonl`](backtest/judgements.jsonl).
 
 | Metric | Value |
 |---|---|
-| Prompts (both tiers answered) | — |
-| % routed to cheap | — |
-| Cost saving vs always-frontier | — |
-| Win/tie/lose of cheap vs frontier (judged) | — |
-| Win-rate delta (router vs always-frontier) | — |
-| Routing precision (cheap verdict win/tie) | — |
-| Over-escalations (frontier, costly only) | — |
+| Prompts (both tiers answered) | 180 |
+| % routed to cheap | 80.6% |
+| Cost saving vs always-frontier | 54.9% |
+| Win/tie/lose of cheap vs frontier (cheap-routed, judged) | 28 / 87 / 30 |
+| Routing precision (cheap verdict win/tie) | 79.3% |
+| Over-escalations (frontier, costly only) | 35 |
 | Routing cost per 1,000 requests | $0 (local laya) |
+
+Confidence-gate calibration (simulated offline from recorded per-prompt confidences):
+
+| min_confidence | % cheap | cost saving | misses | precision |
+|---|---|---|---|---|
+| 0.0 (off) | 80.6% | 54.9% | 30 | 79.3% |
+| 0.45 (default) | ~72% | ~46% | ~27 | ~79% |
+| 0.55 | 53.3% | 30.0% | 21 | 78.1% |
+| 0.70 | 27.2% | 10.4% | 10 | 79.6% |
+
+Two honest findings from this run:
+
+- **Misses are dominated by judge noise, not routing error.** On the 100 trivial prompts (near-identical answers), the judge scored cheap 16 wins and 17 losses — a symmetric noise floor. Roughly half of the 30 recorded misses are likely noise, not real quality losses.
+- **The confidence gate buys little precision.** Precision stays flat (~79%) across the whole threshold range: raising the gate spends savings (~2 points per miss avoided) without improving correctness. The default (0.45) sits in the flat zone; cost-sensitive operators can disable it (`0`) and quality-sensitive ones can raise it.
 
 ## Limitations
 
 - Single-process by design: the rate limiter and metrics are in-memory (fine for one replica; a shared store would be needed for a fleet).
-- The judge is a single model with a fixed rubric; agreement with a second judge is not yet measured (TODO(measure)).
-- The laya checkpoint reports uncalibrated confidence for some question types (a runtime warning surfaces this).
+- The published backtest numbers come from one judge (`glm-5.3`) on one model pair (`glm-5.3-flash` vs `glm-5.3`); agreement with a second judge and results on other model pairs are not yet measured (TODO(measure)). The measured judge noise floor (~16% of trivial prompts scored non-tie) bounds the precision claims above.
+- The laya classifier labeled 142/180 prompts "simple" and only 3 "standard" — the question set under-detects the middle band; tuning the custom questions is the next quality lever.
+- The seeded LMSYS-Chat-1M sample (120 real user turns) is not yet in the dataset.
 - Routing adds a one-time checkpoint download and a per-decision CPU cost (TODO(measure)); it pays for itself on the first avoided frontier call.
 - Not on PyPI yet — install from git.
 
@@ -236,7 +250,7 @@ Contributions welcome — open an issue first for anything non-trivial, keep com
 - [x] Confidence gating + deterministic fast paths
 - [x] Observability: Prometheus `/metrics`, JSONL decision log, `/healthz`, Docker
 - [x] Reproducible backtest harness (`make backtest`)
-- [ ] Published backtest numbers in the README (needs an API budget)
+- [x] Published backtest numbers in the README (GLM pair; OpenAI-pair run pending)
 - [ ] PyPI release
 
 ## License
