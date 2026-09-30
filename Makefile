@@ -1,4 +1,4 @@
-.PHONY: test test-slow backtest backtest-glm dataset judge analyze
+.PHONY: test test-slow backtest backtest-glm bench dataset judge analyze
 
 test:
 	python -m pytest -q
@@ -21,6 +21,9 @@ backtest-glm: dataset
 	OPENAI_BASE_URL=https://api.z.ai/api/paas/v4 \
 	python backtest/judge.py --tiers backtest/tiers.glm.yaml
 	python backtest/analyze.py
+
+bench:
+	python backtest/bench_latency.py
 
 dataset:
 	python backtest/build_dataset.py --with-lmsys

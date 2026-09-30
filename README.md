@@ -98,7 +98,7 @@ content-type: application/json
 
 More runnable examples: [`examples/quickstart.py`](examples/quickstart.py) and [`examples/streaming.py`](examples/streaming.py).
 
-> **First request is slow by design:** laya downloads its decision checkpoints once (tens of seconds on first boot; kept warm afterwards). Subsequent routing decisions are sub-second on CPU. TODO(measure): publish measured per-decision latency on the benchmark hardware.
+> **First request is slow by design:** laya loads its decision checkpoints once (~10 s cold start on CPU; kept warm afterwards). Warm routing decisions measured on this project's benchmark run (AMD64 CPU, 179 prompts, [`backtest/bench_latency.py`](backtest/bench_latency.py)): p50 460 ms, p95 1.4 s, p99 2.7 s — free in API cost, not in latency; run the proxy next to your workload if you are latency-sensitive.
 
 ## Routing behavior
 
@@ -215,7 +215,7 @@ Two honest findings from this run:
 - The published backtest numbers come from one judge (`glm-5.3`) on one model pair (`glm-5.3-flash` vs `glm-5.3`); agreement with a second judge and results on other model pairs are not yet measured (TODO(measure)). The measured judge noise floor (~16% of trivial prompts scored non-tie) bounds the precision claims above.
 - The laya classifier labeled 142/180 prompts "simple" and only 3 "standard" — the question set under-detects the middle band; tuning the custom questions is the next quality lever.
 - The seeded LMSYS-Chat-1M sample (120 real user turns) is not yet in the dataset.
-- Routing adds a one-time checkpoint download and a per-decision CPU cost (TODO(measure)); it pays for itself on the first avoided frontier call.
+- Routing adds a one-time checkpoint load (~10 s) and a per-decision CPU cost (measured p50 460 ms / p99 2.7 s on AMD64 — reproducible via `make bench`); it pays for itself on the first avoided frontier call, not in added latency.
 - Not on PyPI yet — install from git.
 
 ## Development
