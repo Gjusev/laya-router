@@ -54,25 +54,28 @@ def build_tiers(path: Path | None) -> TiersConfig:
 
 
 def answer(client: OpenAI, model: str, prompt: str, max_tokens: int) -> dict:
-    completion = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-        # GLM 5.x always reasons; low keeps the budget on the answer itself.
-        extra_body={"reasoning_effort": "low"},
-    )
-    content = completion.choices[0].message.content or ""
-    if not content.strip():
-        raise RuntimeError(f"empty answer from {model} (reasoning consumed the budget?) for prompt: {prompt[:80]!r}")
-    usage = completion.usage
-    return {
-        "model": model,
-        "content": content,
-        "usage": {
-            "input_tokens": usage.prompt_tokens,
-            "output_tokens": usage.completion_tokens,
-        },
-    }
+    # Reasoning models can burn the whole budget thinking on hard prompts;
+    # one retry with a 4x budget covers those instead of failing the run.
+    for budget in (max_tokens, max_tokens * 4):
+        completion = with_rate_limit_retries(lambda: client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=budget,
+            # GLM 5.x always reasons; low keeps the budget on the answer itself.
+            extra_body={"reasoning_effort": "low"},
+        ))
+        content = completion.choices[0].message.content or ""
+        if content.strip():
+            usage = completion.usage
+            return {
+                "model": model,
+                "content": content,
+                "usage": {
+                    "input_tokens": usage.prompt_tokens,
+                    "output_tokens": usage.completion_tokens,
+                },
+            }
+    raise RuntimeError(f"empty answer from {model} even at {max_tokens * 4} tokens for prompt: {prompt[:80]!r}")
 
 
 def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path | None, workers: int = 1) -> None:
@@ -101,8 +104,8 @@ def run(dataset_path: Path, out_path: Path, limit: int | None, tiers_path: Path 
 
     def fetch(entry: dict) -> dict:
         decision = decisions[entry["id"]]
-        cheap = with_rate_limit_retries(lambda: answer(client, tiers.cheap.model, entry["prompt"], MAX_TOKENS["cheap"]))
-        frontier = with_rate_limit_retries(lambda: answer(client, tiers.frontier.model, entry["prompt"], MAX_TOKENS["frontier"]))
+        cheap = answer(client, tiers.cheap.model, entry["prompt"], MAX_TOKENS["cheap"])
+        frontier = answer(client, tiers.frontier.model, entry["prompt"], MAX_TOKENS["frontier"])
         return {
             "id": entry["id"],
             "source": entry["source"],
