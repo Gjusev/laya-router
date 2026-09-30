@@ -1,6 +1,6 @@
 """Use the proxy with the stock OpenAI SDK — only base_url changes.
 
-First: pip install git+https://github.com/Gjusev/laya-router.git openai
+First: pip install laya-router openai
        laya-router   (serves http://127.0.0.1:8000/v1)
 """
 

@@ -2,7 +2,7 @@
 the upstream produces them, and the routing headers are readable via
 with_raw_response.
 
-First: pip install git+https://github.com/Gjusev/laya-router.git openai
+First: pip install laya-router openai
        laya-router   (serves http://127.0.0.1:8000/v1)
 """
 

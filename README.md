@@ -45,10 +45,10 @@ The client's `model` field is ignored — the router picks the model. Everything
 
 The proxy speaks the OpenAI API and forwards to any OpenAI-compatible upstream (default: `https://api.openai.com/v1`).
 
-**Option A — pip** (PyPI release pending; install from git for now):
+**Option A — pip:**
 
 ```bash
-pip install git+https://github.com/Gjusev/laya-router.git
+pip install laya-router
 export LAYA_ROUTER_UPSTREAM_API_KEY=sk-...   # or forward client keys, see Configuration
 laya-router                                  # serves http://127.0.0.1:8000/v1
 ```
@@ -216,7 +216,6 @@ Two honest findings from this run:
 - The laya classifier labeled 142/180 prompts "simple" and only 3 "standard" — the question set under-detects the middle band; tuning the custom questions is the next quality lever.
 - The seeded LMSYS-Chat-1M sample (120 real user turns) is not yet in the dataset.
 - Routing adds a one-time checkpoint load (~10 s) and a per-decision CPU cost (measured p50 460 ms / p99 2.7 s on AMD64 — reproducible via `make bench`); it pays for itself on the first avoided frontier call, not in added latency.
-- Not on PyPI yet — install from git.
 
 ## Development
 
@@ -251,7 +250,7 @@ Contributions welcome — open an issue first for anything non-trivial, keep com
 - [x] Observability: Prometheus `/metrics`, JSONL decision log, `/healthz`, Docker
 - [x] Reproducible backtest harness (`make backtest`)
 - [x] Published backtest numbers in the README (GLM pair; OpenAI-pair run pending)
-- [ ] PyPI release
+- [x] PyPI release (`pip install laya-router`)
 
 ## License
 
