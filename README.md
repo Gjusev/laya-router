@@ -26,6 +26,13 @@ Built on [laya](https://github.com/NandhaKishorM/laya), the open-source System 1
 
 ## How it works
 
+![How laya-router works](assets/how-it-works.svg)
+
+The client's `model` field is ignored — the router picks the model. Everything else in the request body (temperature, tools, `max_tokens`, …) is forwarded byte-exact.
+
+<details>
+<summary>Pipeline in text form</summary>
+
 ```
 OpenAI SDK / curl / any client
         │  (base_url = http://127.0.0.1:8000/v1)
@@ -39,7 +46,7 @@ OpenAI SDK / curl / any client
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-The client's `model` field is ignored — the router picks the model. Everything else in the request body (temperature, tools, `max_tokens`, …) is forwarded byte-exact.
+</details>
 
 ## Quickstart
 

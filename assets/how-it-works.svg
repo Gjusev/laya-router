@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="400" viewBox="0 0 960 400" role="img" aria-label="How laya-router works: a client sends prompts to the proxy, a local decision model routes each one to the cheap or the frontier tier, and responses come back with routing headers.">
+  <style>
+    .sans { font-family: Helvetica, Arial, sans-serif; }
+    .mono { font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
+    .serif { font-family: Georgia, "Instrument Serif", serif; }
+
+    .card { fill: #ffffff; stroke: #eaeaea; stroke-width: 1; }
+    .ink { fill: #111111; }
+    .muted { fill: #787774; }
+    .line { stroke: #d9d8d4; stroke-width: 1.5; fill: none; }
+
+    .req { fill: #111111; }
+    .res { fill: #787774; }
+
+    /* request 1: client -> proxy -> cheap -> upstream (0-4s of an 8s loop) */
+    .dot-a1 { animation: a1 8s linear infinite; }
+    .dot-a2 { animation: a2 8s linear infinite; }
+    .dot-a3 { animation: a3 8s linear infinite; }
+    .dot-a4 { animation: a4 8s linear infinite; }
+    @keyframes a1 { 0% { transform: translate(210px,200px); opacity: 0; } 2% { opacity: 1; } 10% { transform: translate(300px,200px); opacity: 1; } 11%, 100% { transform: translate(300px,200px); opacity: 0; } }
+    @keyframes a2 { 0%, 10% { transform: translate(300px,200px); opacity: 0; } 12% { opacity: 1; } 22% { transform: translate(430px,200px); } 23%, 100% { transform: translate(430px,200px); opacity: 0; } }
+    @keyframes a3 { 0%, 22% { transform: translate(430px,200px); opacity: 0; } 24% { opacity: 1; } 34% { transform: translate(620px,148px); } 35%, 100% { transform: translate(620px,148px); opacity: 0; } }
+    @keyframes a4 { 0%, 34% { transform: translate(620px,148px); opacity: 0; } 36% { opacity: 1; } 46% { transform: translate(790px,148px); } 47%, 100% { transform: translate(790px,148px); opacity: 0; } }
+
+    /* request 2: client -> proxy -> frontier -> upstream (4-8s) */
+    .dot-b1 { animation: b1 8s linear infinite; }
+    .dot-b2 { animation: b2 8s linear infinite; }
+    .dot-b3 { animation: b3 8s linear infinite; }
+    .dot-b4 { animation: b4 8s linear infinite; }
+    @keyframes b1 { 0%, 50% { transform: translate(210px,200px); opacity: 0; } 52% { opacity: 1; } 60% { transform: translate(300px,200px); opacity: 1; } 61%, 100% { transform: translate(300px,200px); opacity: 0; } }
+    @keyframes b2 { 0%, 60% { transform: translate(300px,200px); opacity: 0; } 62% { opacity: 1; } 72% { transform: translate(430px,200px); } 73%, 100% { transform: translate(430px,200px); opacity: 0; } }
+    @keyframes b3 { 0%, 72% { transform: translate(430px,200px); opacity: 0; } 74% { opacity: 1; } 84% { transform: translate(620px,252px); } 85%, 100% { transform: translate(620px,252px); opacity: 0; } }
+    @keyframes b4 { 0%, 84% { transform: translate(620px,252px); opacity: 0; } 86% { opacity: 1; } 96% { transform: translate(790px,252px); } 97%, 100% { transform: translate(790px,252px); opacity: 0; } }
+
+    /* tier pills light up when their dot passes */
+    .pill-cheap { animation: glowCheap 8s ease-in-out infinite; }
+    @keyframes glowCheap { 0%, 30% { opacity: 0.45; } 34%, 52% { opacity: 1; } 56%, 100% { opacity: 0.45; } }
+    .pill-frontier { animation: glowFrontier 8s ease-in-out infinite; }
+    @keyframes glowFrontier { 0%, 68% { opacity: 0.45; } 72%, 90% { opacity: 1; } 94%, 100% { opacity: 0.45; } }
+
+    /* decision layer rows breathe in sequence */
+    .layer { opacity: 0.35; }
+    .layer-1 { animation: layerPulse 8s ease-in-out infinite; }
+    .layer-2 { animation: layerPulse 8s ease-in-out infinite; animation-delay: 0.6s; }
+    .layer-3 { animation: layerPulse 8s ease-in-out infinite; animation-delay: 1.2s; }
+    @keyframes layerPulse { 0%, 8% { opacity: 0.35; } 12%, 24% { opacity: 1; } 28%, 100% { opacity: 0.35; } }
+
+    .header-tag { animation: tagPulse 8s ease-in-out infinite; }
+    @keyframes tagPulse { 0%, 44% { opacity: 0.2; } 47%, 54% { opacity: 1; } 58%, 100% { opacity: 0.2; } }
+    .header-tag-2 { animation: tagPulse2 8s ease-in-out infinite; }
+    @keyframes tagPulse2 { 0%, 82% { opacity: 0.2; } 85%, 92% { opacity: 1; } 96%, 100% { opacity: 0.2; } }
+  </style>
+
+  <rect width="960" height="400" fill="#f7f6f3"/>
+
+  <!-- client -->
+  <rect x="40" y="140" width="170" height="120" rx="10" class="card"/>
+  <text x="55" y="170" class="mono ink" font-size="15">client</text>
+  <text x="55" y="196" class="mono muted" font-size="12">base_url =</text>
+  <text x="55" y="214" class="mono muted" font-size="12">localhost:8000/v1</text>
+  <text x="55" y="240" class="mono muted" font-size="12">model: ignored</text>
+
+  <!-- proxy -->
+  <rect x="300" y="100" width="260" height="200" rx="12" class="card"/>
+  <text x="322" y="130" class="serif ink" font-size="22">laya-router</text>
+  <text x="322" y="162" class="mono ink layer layer-1" font-size="13">1&#160; fast path (regex, 0 ms)</text>
+  <text x="322" y="188" class="mono ink layer layer-2" font-size="13">2&#160; laya decides (local)</text>
+  <text x="322" y="214" class="mono ink layer layer-3" font-size="13">3&#160; confidence gate</text>
+  <text x="322" y="248" class="mono muted" font-size="12">complex or unsure</text>
+  <text x="322" y="266" class="mono muted" font-size="12">&#8594; frontier, else cheap</text>
+  <text x="322" y="290" class="mono muted" font-size="11">X-Laya-* headers on the way out</text>
+
+  <!-- wire client->proxy -->
+  <path d="M 210 200 L 300 200" class="line"/>
+
+  <!-- tier pills -->
+  <g class="pill-cheap">
+    <rect x="620" y="128" width="170" height="40" rx="20" fill="#edf3ec"/>
+    <text x="648" y="153" class="mono" font-size="14" fill="#346538">cheap tier</text>
+  </g>
+  <g class="pill-frontier">
+    <rect x="620" y="232" width="170" height="40" rx="20" fill="#e1f3fe"/>
+    <text x="638" y="257" class="mono" font-size="14" fill="#1f6c9f">frontier tier</text>
+  </g>
+
+  <!-- wires proxy->tiers->upstream -->
+  <path d="M 560 200 C 590 200, 590 148, 620 148" class="line"/>
+  <path d="M 560 200 C 590 200, 590 252, 620 252" class="line"/>
+  <path d="M 790 148 L 830 148" class="line"/>
+  <path d="M 790 252 L 830 252" class="line"/>
+
+  <!-- upstream -->
+  <rect x="830" y="140" width="100" height="120" rx="10" class="card"/>
+  <text x="845" y="170" class="mono ink" font-size="13">upstream</text>
+  <text x="845" y="192" class="mono muted" font-size="11">any</text>
+  <text x="845" y="208" class="mono muted" font-size="11">OpenAI-</text>
+  <text x="845" y="224" class="mono muted" font-size="11">compatible</text>
+  <text x="845" y="246" class="mono muted" font-size="11">API</text>
+
+  <!-- response header tags (bottom) -->
+  <g class="header-tag">
+    <rect x="300" y="330" width="290" height="30" rx="6" fill="#fbf3db"/>
+    <text x="316" y="350" class="mono" font-size="13" fill="#956400">x-laya-route: cheap</text>
+  </g>
+  <g class="header-tag-2">
+    <rect x="610" y="330" width="314" height="30" rx="6" fill="#fbf3db"/>
+    <text x="626" y="350" class="mono" font-size="13" fill="#956400">x-laya-route: frontier</text>
+  </g>
+
+  <!-- traveling dots -->
+  <circle class="req dot-a1" r="6" cx="0" cy="0"/>
+  <circle class="req dot-a2" r="6" cx="0" cy="0"/>
+  <circle class="req dot-a3" r="6" cx="0" cy="0"/>
+  <circle class="req dot-a4" r="6" cx="0" cy="0"/>
+  <circle class="req dot-b1" r="6" cx="0" cy="0"/>
+  <circle class="req dot-b2" r="6" cx="0" cy="0"/>
+  <circle class="req dot-b3" r="6" cx="0" cy="0"/>
+  <circle class="req dot-b4" r="6" cx="0" cy="0"/>
+
+  <text x="40" y="60" class="serif ink" font-size="26">Every prompt gets exactly the model it needs</text>
+  <text x="40" y="88" class="mono muted" font-size="14">local decisions, $0 per routing call, 80.6% of prompts go cheap (measured: &#8722;54.9% cost)</text>
+</svg>

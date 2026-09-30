@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>laya-router — brag</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        background: #f7f6f3;
+        color: #111111;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f7f6f3;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+      .terminal {
+        width: 1160px;
+        background: #ffffff;
+        border: 1px solid #eaeaea;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        padding: 28px 40px 36px;
+        box-sizing: border-box;
+      }
+      .terminal-bar {
+        display: flex;
+        gap: 8px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eaeaea;
+        margin-bottom: 24px;
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #eaeaea;
+      }
+      .mono {
+        font-family: "JetBrains Mono", "SF Mono", monospace;
+        font-size: 28px;
+        line-height: 1.75;
+        color: #111111;
+      }
+      .muted {
+        color: #787774;
+      }
+      .prompt {
+        color: #787774;
+      }
+      .pill {
+        display: inline-block;
+        border-radius: 9999px;
+        padding: 2px 14px;
+        font-size: 20px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        vertical-align: middle;
+        margin-left: 14px;
+      }
+      .pill-cheap {
+        background: #edf3ec;
+        color: #346538;
+      }
+      .pill-frontier {
+        background: #e1f3fe;
+        color: #1f6c9f;
+      }
+      .serif {
+        font-family: "Instrument Serif", serif;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        font-weight: 400;
+      }
+      .caption {
+        font-size: 64px;
+        margin-top: 40px;
+        text-align: center;
+      }
+      .caret {
+        display: inline-block;
+        width: 16px;
+        height: 30px;
+        background: #111111;
+        vertical-align: text-bottom;
+        margin-left: 2px;
+      }
+      .metric-card {
+        text-align: center;
+      }
+      .metric-number {
+        font-size: 168px;
+      }
+      .metric-number .cost {
+        color: #9f2f2d;
+      }
+      .metric-sub {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 30px;
+        color: #787774;
+        margin-top: 28px;
+      }
+      .wordmark {
+        font-size: 56px;
+        margin-top: 56px;
+      }
+      .pip-line {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 26px;
+        color: #787774;
+        margin-top: 18px;
+      }
+      .header-row {
+        display: flex;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="laya-router-brag"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="20"
+    >
+      <audio
+        id="music"
+        data-start="0"
+        data-track-index="0"
+        data-volume="0.38"
+        src="assets/music/happy-beats-business-moves-vol-10-by-ende-dot-app.mp3"
+      ></audio>
+      <audio id="keys-1" data-start="0.35" data-track-index="1" data-volume="0.5" src="assets/sfx/keypress-004.wav"></audio>
+      <audio id="keys-2" data-start="0.95" data-track-index="2" data-volume="0.5" src="assets/sfx/keypress-009.wav"></audio>
+      <audio id="keys-3" data-start="3.6" data-track-index="3" data-volume="0.45" src="assets/sfx/keypress-004.wav"></audio>
+      <audio id="tick-1" data-start="8.2" data-track-index="4" data-volume="0.4" src="assets/sfx/click_002.ogg"></audio>
+      <audio id="tick-2" data-start="9.3" data-track-index="5" data-volume="0.4" src="assets/sfx/click_002.ogg"></audio>
+      <audio id="tick-3" data-start="10.4" data-track-index="6" data-volume="0.4" src="assets/sfx/click_002.ogg"></audio>
+      <audio id="tick-4" data-start="11.5" data-track-index="7" data-volume="0.4" src="assets/sfx/click_002.ogg"></audio>
+      <audio id="lift" data-start="12.56" data-track-index="8" data-volume="0.5" src="assets/sfx/switch_006.ogg"></audio>
+      <audio id="card-hit" data-start="15.82" data-track-index="9" data-volume="0.6" src="assets/sfx/impactSoft_heavy_000.ogg"></audio>
+
+      <!-- Scene 1: hook, the install -->
+      <section id="s1" class="clip" data-start="0" data-duration="3.2" data-track-index="2">
+        <div>
+          <div class="terminal">
+            <div class="terminal-bar">
+              <div class="dot"></div>
+              <div class="dot"></div>
+              <div class="dot"></div>
+            </div>
+            <div class="mono"><span class="prompt">$ </span><span id="type-line"></span><span id="caret-1" class="caret"></span></div>
+          </div>
+          <div id="caption-1" class="serif caption">your LLM bill, routed.</div>
+        </div>
+      </section>
+
+      <!-- Scene 2: two-line adoption -->
+      <section id="s2" class="clip" data-start="3.2" data-duration="3.8" data-track-index="2">
+        <div id="terminal-2" class="terminal">
+          <div class="terminal-bar">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+          </div>
+          <div class="mono" id="code-2">
+            <div>client = OpenAI(</div>
+            <div>&nbsp;&nbsp;base_url="http://127.0.0.1:8000/v1",</div>
+            <div>&nbsp;&nbsp;api_key="sk-...")</div>
+            <div id="code-comment" class="muted"># that's the whole integration</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 3: the router deciding -->
+      <section id="s3" class="clip" data-start="7" data-duration="8" data-track-index="2">
+        <div>
+          <div class="terminal">
+            <div class="terminal-bar">
+              <div class="dot"></div>
+              <div class="dot"></div>
+              <div class="dot"></div>
+            </div>
+            <div class="mono">
+              <div id="curl-line" class="muted">$ curl .../v1/chat/completions -d '{"model":"ignored", ...}'</div>
+              <div class="header-row" id="hdr-1"><span>x-laya-route:</span><span class="pill pill-cheap">cheap</span></div>
+              <div class="header-row" id="hdr-2"><span>x-laya-model: gpt-4o-mini</span></div>
+              <div class="header-row" id="hdr-3"><span>x-laya-confidence: 0.90</span></div>
+              <div class="header-row" id="hdr-4"><span>x-laya-reason: complexity=simple</span></div>
+              <div class="header-row" id="hdr-5" style="margin-top: 14px"><span>x-laya-route:</span><span class="pill pill-frontier">frontier</span></div>
+            </div>
+          </div>
+          <div id="pair-caption" class="mono" style="text-align: center; margin-top: 28px; color: #787774; font-size: 24px">
+            same client, two different decisions
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 4: measured -->
+      <section id="s4" class="clip" data-start="15" data-duration="5" data-track-index="2">
+        <div class="metric-card">
+          <div id="metric-number" class="serif metric-number">−<span class="cost">54.9%</span> cost</div>
+          <div class="metric-sub">
+            <div id="sub-1">79% quality-tied &middot; blind-judge backtest</div>
+            <div id="sub-2">$0 per routing decision, runs on your machine</div>
+          </div>
+          <div id="wordmark" class="serif wordmark">laya-router</div>
+          <div id="pip-line" class="pip-line">pip install laya-router</div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Build typed characters for scene 1 (no <br>, spans only).
+      const typed = "pip install laya-router";
+      const typeLine = document.getElementById("type-line");
+      for (const ch of typed) {
+        const span = document.createElement("span");
+        span.textContent = ch;
+        span.className = "type-char";
+        typeLine.appendChild(span);
+      }
+
+      // Scene 1: typing + caption.
+      tl.from("#s1 .type-char", { opacity: 0, stagger: 0.055, duration: 0.04, ease: "none" }, 0.3);
+      tl.to("#caret-1", { opacity: 0, duration: 0.35, ease: "none", repeat: 7, yoyo: true }, 0.3);
+      tl.from("#caption-1", { y: 28, autoAlpha: 0, duration: 0.7, ease: "power3.out" }, 1.9);
+
+      // Scene 2: terminal slides in, code staggers, comment pops last.
+      tl.from("#terminal-2", { y: 48, autoAlpha: 0, duration: 0.7, ease: "power3.out" }, 3.45);
+      tl.from("#code-2 > div:not(#code-comment)", { x: -28, autoAlpha: 0, stagger: 0.22, duration: 0.45, ease: "power2.out" }, 3.9);
+      tl.from("#code-comment", { autoAlpha: 0, duration: 0.4, ease: "power1.out" }, 5.5);
+
+      // Scene 3: curl line, headers one by one (hold floors respected), frontier pair.
+      tl.from("#curl-line", { autoAlpha: 0, x: -20, duration: 0.5, ease: "power2.out" }, 7.2);
+      // beat-grid: hdr1 8.20s, hdr2 9.30s, hdr3 10.40s, hdr4 11.50s (every other beat)
+      tl.from("#hdr-1", { autoAlpha: 0, x: -24, duration: 0.45, ease: "power2.out" }, 8.2);
+      tl.from("#hdr-2", { autoAlpha: 0, x: -24, duration: 0.45, ease: "power2.out" }, 9.3);
+      tl.from("#hdr-3", { autoAlpha: 0, x: -24, duration: 0.45, ease: "power2.out" }, 10.4);
+      tl.from("#hdr-4", { autoAlpha: 0, x: -24, duration: 0.45, ease: "power2.out" }, 11.5);
+      // beat-locked: frontier row lands on the strong cue at 12.56s
+      tl.from("#hdr-5", { autoAlpha: 0, x: -24, duration: 0.5, ease: "power3.out" }, 12.56);
+      tl.from("#pair-caption", { autoAlpha: 0, duration: 0.5, ease: "power1.out" }, 13.4);
+
+      // Scene 4: the measured card.
+      // beat-locked: number lands on the strong cue at 15.82s
+      tl.from("#metric-number", { scale: 0.92, autoAlpha: 0, duration: 0.6, ease: "power3.out" }, 15.82);
+      tl.from("#sub-1", { autoAlpha: 0, y: 12, duration: 0.45, ease: "power2.out" }, 16.5);
+      tl.from("#sub-2", { autoAlpha: 0, y: 12, duration: 0.45, ease: "power2.out" }, 16.8);
+      tl.from("#wordmark", { autoAlpha: 0, duration: 0.5, ease: "power1.out" }, 17.7);
+      tl.from("#pip-line", { autoAlpha: 0, duration: 0.5, ease: "power1.out" }, 18.1);
+      tl.to("#s4 .metric-card", { autoAlpha: 0, duration: 0.6, ease: "power1.in" }, 19.3);
+
+      window.__timelines["laya-router-brag"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+I cut 54.9% off my LLM bill by routing every prompt to the cheap model unless it really needs the frontier one. The router runs locally, one forward pass, $0 per decision, and a blind judge over 180 prompts says quality tied on 79% of what it sent down. pip install laya-router, change your base_url, done.
