@@ -61,22 +61,27 @@ class TestJudgeParsing:
 
 
 class FakeCompletions:
-    def __init__(self, content):
-        self._content = content
+    def __init__(self, client):
+        self._client = client
         self.requests = []
 
     def create(self, **kwargs):
         self.requests.append(kwargs)
-        message = type("M", (), {"content": self._content})()
+        content = self._client.replies.pop(0) if self._client.replies else ""
+        message = type("M", (), {"content": content})()
         choice = type("C", (), {"message": message})()
         return type("R", (), {"choices": [choice]})()
 
 
 class FakeJudgeClient:
-    """Mimics the OpenAI SDK surface judge_pair uses (no network)."""
+    """Mimics the OpenAI SDK surface judge_pair uses (no network).
+
+    Accepts one reply or a list consumed call by call.
+    """
 
     def __init__(self, content):
-        completions = FakeCompletions(content)
+        self.replies = list(content) if isinstance(content, list) else [content]
+        completions = FakeCompletions(self)
         self.chat = type("Chat", (), {"completions": completions})()
 
 
@@ -203,3 +208,41 @@ class TestTiersSelection:
     def test_packaged_default_when_nothing_set(self, monkeypatch):
         monkeypatch.delenv("LAYA_ROUTER_TIERS_FILE", raising=False)
         assert build_tiers(None).cheap.model == "gpt-4o-mini"
+
+
+class TestJudgeFallback:
+    def test_missing_token_triggers_corrective_retry(self):
+        client = FakeJudgeClient([
+            "Answer B is more complete; Answer A has a minor error.",  # no token
+            "[[B]]",
+        ])
+        record = {
+            "id": 9,
+            "source": "mt_bench",
+            "prompt": "q",
+            "router": {"tier": "cheap"},
+            "cheap": {"content": "a1"},
+            "frontier": {"content": "a2"},
+        }
+
+        judgement = judge.judge_pair(client, "judge-model", record, cheap_is="a")
+
+        assert judgement["verdict"] == "b"
+        assert judgement["outcome"] == "lose"
+        assert len(client.chat.completions.requests) == 2
+
+    def test_unparseable_after_retry_does_not_crash_the_run(self):
+        client = FakeJudgeClient(["prose with no verdict", "still no verdict"])
+        record = {
+            "id": 10,
+            "source": "mt_bench",
+            "prompt": "q",
+            "router": {"tier": "cheap"},
+            "cheap": {"content": "a1"},
+            "frontier": {"content": "a2"},
+        }
+
+        judgement = judge.judge_pair(client, "judge-model", record, cheap_is="a")
+
+        assert judgement["verdict"] == "unparseable"
+        assert judgement["outcome"] == "unparseable"

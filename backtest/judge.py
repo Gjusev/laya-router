@@ -69,28 +69,42 @@ def to_outcome(verdict: str, cheap_is: str) -> str:
 def judge_pair(client: OpenAI, judge_model: str, record: dict, cheap_is: str) -> dict:
     answer_a = record["cheap"]["content"] if cheap_is == "a" else record["frontier"]["content"]
     answer_b = record["frontier"]["content"] if cheap_is == "a" else record["cheap"]["content"]
+    rubric = RUBRIC.format(question=record["prompt"], answer_a=answer_a, answer_b=answer_b)
 
-    def call() -> str:
-        return client.chat.completions.create(
+    def call(messages) -> str:
+        return with_rate_limit_retries(lambda: client.chat.completions.create(
             model=judge_model,
-            messages=[{"role": "user", "content": RUBRIC.format(
-                question=record["prompt"], answer_a=answer_a, answer_b=answer_b)}],
+            messages=messages,
             # Reasoning models spend tokens thinking before the verdict; low
             # effort keeps the budget on the verdict itself.
             max_tokens=2048,
             temperature=0,
             extra_body={"reasoning_effort": "low"},
-        ).choices[0].message.content
+        ).choices[0].message.content)
 
-    reply = with_rate_limit_retries(call)
-    verdict = parse_verdict(reply or "")
+    reply = call([{"role": "user", "content": rubric}])
+    try:
+        verdict = parse_verdict(reply or "")
+    except ValueError:
+        # The justification sometimes swallows the verdict token; ask for
+        # just the token before giving up (recorded as unparseable, which
+        # the analysis excludes from the judged set).
+        retry = call([
+            {"role": "user", "content": rubric},
+            {"role": "assistant", "content": reply or ""},
+            {"role": "user", "content": "Output only [[A]], [[B]], or [[tie]] now."},
+        ])
+        try:
+            verdict = parse_verdict(retry or "")
+        except ValueError:
+            verdict = "unparseable"
     return {
         "id": record["id"],
         "source": record["source"],
         "router_tier": record["router"]["tier"],
         "cheap_is": cheap_is,
         "verdict": verdict,
-        "outcome": to_outcome(verdict, cheap_is),
+        "outcome": "unparseable" if verdict == "unparseable" else to_outcome(verdict, cheap_is),
         "justification": reply,
     }
 
